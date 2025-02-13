@@ -1,0 +1,9 @@
+name = "premise-selection"
+testDriver = "PremiseSelectionTest"
+defaultTargets = ["PremiseSelection"]
+
+[[lean_lib]]
+name = "PremiseSelection"
+
+[[lean_lib]]
+name = "PremiseSelectionTest"
