@@ -1,8 +1,8 @@
 import Lean
 
-namespace PremiseSelection.Cloud
+namespace Lean.PremiseSelection.Cloud
 
-open Lean Meta
+open Meta
 
 register_option premiseSelection.apiUrl : String := {
   defValue := "http://52.206.70.13/retrieve"
@@ -56,9 +56,9 @@ def selectPremisesCore (apiUrl : String) (state : String) (importedModules local
 
 initialize Lean.registerTraceClass `premiseSelection.debug
 
-def selectPremises (goal : MVarId) (k : Nat := 16) : MetaM (Array PremiseSuggestion) := do
+def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array PremiseSuggestion) := do
   let env ← getEnv
-  let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ ppGoal goal
+  let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ Meta.ppGoal goal
   let state := state.pretty
   trace[premiseSelection.debug] m!"State: {state}"
 
@@ -66,13 +66,13 @@ def selectPremises (goal : MVarId) (k : Nat := 16) : MetaM (Array PremiseSuggest
   let localPremises := env.constants.map₂.foldl (fun arr name _ => arr.push name) #[]
   let apiUrl ← getPremiseSelectionApiUrlM
 
-  let suggestions ← profileitM Exception "select_premises" (← getOptions) do
+  let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do
     selectPremisesCore apiUrl state importedModules localPremises k
 
   return suggestions
 
-elab "select_premises" : tactic => do
+elab "suggest_premises_cloud" k:num : tactic => do
   let goal ← Lean.Elab.Tactic.getMainGoal
-  logInfo <| repr (← selectPremises goal)
+  logInfo $ .ofArray $ (← selectPremises goal k.getNat).map toMessageData
 
-end PremiseSelection.Cloud
+end Lean.PremiseSelection.Cloud
