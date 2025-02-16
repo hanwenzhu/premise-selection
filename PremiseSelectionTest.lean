@@ -1,6 +1,12 @@
 import PremiseSelection
 
-open Lean PremiseSelection.Cloud
+open Lean
+
+section Cloud
+
+open PremiseSelection.Cloud
+
+set_premise_selector premiseSelector
 
 section Profiling
 
@@ -8,11 +14,11 @@ set_option trace.premiseSelection.debug true
 set_option trace.profiler true
 
 example (a b : Nat) : a + b = b + a := by
-  suggest_premises_cloud 16
+  suggest_premises
   apply Nat.add_comm
 
 #eval show CoreM _ from do
-  let url ← getPremiseSelectionApiUrlM
+  let url ← getApiUrlM
   selectPremisesCore url "a b : Nat
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none none 10
 
@@ -31,3 +37,5 @@ example (a b : Nat) : a + b = b + a := by
 
 example (a b : Nat) : a + (b + 1) = (a + b) + 1 := by
   simp_all_premises 16
+
+end Cloud
