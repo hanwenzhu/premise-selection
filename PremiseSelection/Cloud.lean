@@ -18,16 +18,16 @@ def getApiUrlM : CoreM String := do
   let opts ← getOptions
   return getApiUrl opts
 
-local instance : FromJson Suggestion where
+scoped instance : FromJson Suggestion where
   fromJson? json := do
     let name ← json.getObjValAs? Name "name"
     let score ← json.getObjValAs? Float "score"
     return { name, score }
 
-local instance : ToString Suggestion where
+scoped instance : ToString Suggestion where
   toString p := s!"{p.name} ({p.score})"
 
-local instance : ToMessageData Suggestion where
+scoped instance : ToMessageData Suggestion where
   toMessageData p := s!"{p.name} ({p.score})"
 
 def selectPremisesCore (apiUrl : String) (state : String) (importedModules localPremises : Option (Array Name))
