@@ -18,20 +18,20 @@ def getApiUrlM : CoreM String := do
   let opts ← getOptions
   return getApiUrl opts
 
-instance : FromJson Suggestion where
+local instance : FromJson Suggestion where
   fromJson? json := do
     let name ← json.getObjValAs? Name "name"
     let score ← json.getObjValAs? Float "score"
     return { name, score }
 
-instance : ToString Suggestion where
+local instance : ToString Suggestion where
   toString p := s!"{p.name} ({p.score})"
 
-instance : ToMessageData Suggestion where
+local instance : ToMessageData Suggestion where
   toMessageData p := s!"{p.name} ({p.score})"
 
 def selectPremisesCore (apiUrl : String) (state : String) (importedModules localPremises : Option (Array Name))
-  (k : Nat) : IO (Array Suggestion) := do
+    (k : Nat) : IO (Array Suggestion) := do
   let data := Json.mkObj [
     ("state", .str state),
     ("imported_modules", toJson importedModules),
@@ -71,6 +71,7 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
 
   let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do
     selectPremisesCore apiUrl state importedModules localPremises k
+  trace[premiseSelection.debug] m!"Suggestions: {suggestions}"
 
   return suggestions
 
