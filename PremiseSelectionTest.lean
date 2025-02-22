@@ -6,7 +6,7 @@ section Cloud
 
 open Cloud
 
-theorem Nat.add_eq_add (a b : Nat) : a + b = b + a := Nat.add_comm ..
+theorem Nat.add_eq_add_swap (a b : Nat) : a + b = b + a := Nat.add_comm ..
 theorem Nat.add_comm' (a b : Nat) : a + b = b + a := Nat.add_comm ..
 theorem add_comm_nat (a b : Nat) : a + b = b + a := Nat.add_comm ..
 theorem add_comm (a b : Nat) : a + b = b + a := Nat.add_comm ..
@@ -96,7 +96,8 @@ info: { name := `Nat.add_comm, decl := "theorem Nat.add_comm (n m : Nat) : Eq (H
 
 #eval show MetaM _ from do
   let names ← Premise.getNames (← Cloud.getIndexedModules)
-  IO.println (names.contains ``add_comm_nat)
+  assert! names.contains ``add_comm_nat
+  IO.eprintln (names.take 100)
 
 -- set_option profiler true
 -- set_option profiler.threshold 1
@@ -119,7 +120,12 @@ end Generated
 
 #time
 #eval show MetaM _ from do
-  let premises ← Premise.getPremises ∅
+  let premises ← Premise.getPremises (← Cloud.getIndexedModules)
+  assert! 10000 <= premises.size && premises.size < 20000
   return premises.size
+
+-- This makes the server OOM
+-- example : 4882 = 4882 := by
+--   suggest_premises
 
 end Premise
