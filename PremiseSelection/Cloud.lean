@@ -1,22 +1,71 @@
 import Lean.PremiseSelection
 import Lean.Server.Utils
-import PremiseSelection.Basic
+import PremiseSelection.Premise
 
 namespace Lean.PremiseSelection.Cloud
 
-open Meta
-
-register_option apiUrl : String := {
-  defValue := "http://52.206.70.13/retrieve"
-  descr := "The URL of the premise retrieval API"
+register_option apiBaseUrl : String := {
+  defValue := "http://52.206.70.13"
+  descr := "The base URL of the premise retrieval API"
 }
 
-def getApiUrl (opts : Options) : String :=
-  apiUrl.get opts
+def getApiBaseUrl (opts : Options) : String :=
+  apiBaseUrl.get opts
 
-def getApiUrlM : CoreM String := do
-  let opts ← getOptions
-  return getApiUrl opts
+section IndexedPremises
+
+/-! Retrieving indexed premises and modules stored on the server -/
+
+/-- Unfiltered list of all premises known by the server.
+This is currently not used in Lean (but the API `/indexed-premises` will always be available). -/
+def getIndexedPremises (apiBaseUrl : String) : IO NameSet := do
+  let apiUrl := apiBaseUrl ++ "/indexed-premises"
+  let curlArgs := #[
+    "-X", "GET",
+    "--user-agent", "LeanProver (https://leanprover-community.github.io/)",
+    apiUrl
+  ]
+  let out ← IO.Process.output { cmd := "curl", args := curlArgs }
+
+  if out.exitCode != 0 then
+    IO.throwServerError <|
+      "Could not send API request to retrieve premises. " ++
+      s!"curl exited with code {out.exitCode}:\n{out.stderr}"
+
+  match Json.parse out.stdout >>= fromJson? with
+  | .ok (result : Array String) =>
+      let mut names := ∅
+      for name in result do
+        names := names.insert name.toName
+      return names
+  | .error e => IO.throwServerError <|
+      s!"Could not parse server output (error: {e})"
+
+/-- All modules known by the server. -/
+def getIndexedModules (apiBaseUrl : String) : IO NameSet := do
+  let apiUrl := apiBaseUrl ++ "/indexed-modules"
+  let curlArgs := #[
+    "-X", "GET",
+    "--user-agent", "LeanProver (https://leanprover-community.github.io/)",
+    apiUrl
+  ]
+  let out ← IO.Process.output { cmd := "curl", args := curlArgs }
+
+  if out.exitCode != 0 then
+    IO.throwServerError <|
+      "Could not send API request to retrieve modules. " ++
+      s!"curl exited with code {out.exitCode}:\n{out.stderr}"
+
+  match Json.parse out.stdout >>= fromJson? with
+  | .ok (result : Array String) =>
+      let mut moduleNames := ∅
+      for moduleName in result do
+        moduleNames := moduleNames.insert moduleName.toName
+      return moduleNames
+  | .error e => IO.throwServerError <|
+      s!"Could not parse server output (error: {e})"
+
+end IndexedPremises
 
 scoped instance : FromJson Suggestion where
   fromJson? json := do
@@ -30,12 +79,16 @@ scoped instance : ToString Suggestion where
 scoped instance : ToMessageData Suggestion where
   toMessageData p := s!"{p.name} ({p.score})"
 
-def selectPremisesCore (apiUrl : String) (state : String) (importedModules localPremises : Option (Array Name))
+initialize Lean.registerTraceClass `premiseSelection.debug
+
+def selectPremisesCore (apiBaseUrl : String) (state : String)
+    (importedModules : Option (Array Name)) (newPremises : Option (Array Premise))
     (k : Nat) : IO (Array Suggestion) := do
+  let apiUrl := apiBaseUrl ++ "/retrieve"
   let data := Json.mkObj [
     ("state", .str state),
     ("imported_modules", toJson importedModules),
-    ("local_premises", toJson localPremises),
+    ("new_premises", toJson newPremises),
     ("k", .num (.fromNat k)),
   ]
   let curlArgs := #[
@@ -57,8 +110,6 @@ def selectPremisesCore (apiUrl : String) (state : String) (importedModules local
   | .error e => IO.throwServerError <|
       s!"Could not parse premise retrieval output (error: {e})\nRaw output:\n{out.stdout}"
 
-initialize Lean.registerTraceClass `premiseSelection.debug
-
 def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   let env ← getEnv
   let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ Meta.ppGoal goal
@@ -66,13 +117,14 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   trace[premiseSelection.debug] m!"State: {state}"
 
   let importedModules := env.allImportedModuleNames
-  let localPremises := env.constants.map₂.foldl (fun arr name _ => arr.push name) #[]
-  let apiUrl ← getApiUrlM
+  let indexedModules ← getIndexedModules (getApiBaseUrl (← getOptions))
+  let newPremises ← Premise.getPremises indexedModules
+  let apiBaseUrl := getApiBaseUrl (← getOptions)
 
   let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do
-    selectPremisesCore apiUrl state importedModules localPremises k
-  trace[premiseSelection.debug] m!"Suggestions: {suggestions}"
+    selectPremisesCore apiBaseUrl state importedModules newPremises k
 
+  trace[premiseSelection.debug] m!"Suggestions: {suggestions}"
   return suggestions
 
 def premiseSelector : Selector := fun goal config => do
