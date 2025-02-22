@@ -169,21 +169,6 @@ def getNames (excludeModules : NameSet) : CoreM (Array Name) := do
       names := names.push name
   return names
 
-/--
-Applies the monadic function `f` on every element `x` in the list, left-to-right, and returns the
-concatenation of the results.
-
-(Thomas: copied from newest Lean core.)
--/
-@[inline]
-def _root_.List.flatMapM {m : Type u → Type v} [Monad m] {α : Type w} {β : Type u} (f : α → m (List β)) (as : List α) : m (List β) :=
-  let rec @[specialize] loop
-    | [],     bs => pure bs.reverse.flatten
-    | a :: as, bs => do
-      let bs' ← f a
-      loop as (bs' :: bs)
-  loop as []
-
 def getPremises (excludeModules : NameSet) (chunkSize := 256) : CoreM (Array Premise) := do
   let name ← getNames excludeModules
 
