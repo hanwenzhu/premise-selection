@@ -2,6 +2,11 @@ name = "premise-selection"
 testDriver = "PremiseSelectionTest"
 defaultTargets = ["PremiseSelection"]
 
+[[require]]
+name = "batteries"
+git = "https://github.com/leanprover-community/batteries"
+rev = "v4.15.0"
+
 [[lean_lib]]
 name = "PremiseSelection"
 

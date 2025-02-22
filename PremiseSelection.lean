@@ -1,2 +1,3 @@
 import PremiseSelection.Basic
 import PremiseSelection.Cloud
+import PremiseSelection.Premise
