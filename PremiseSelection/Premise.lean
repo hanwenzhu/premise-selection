@@ -108,11 +108,10 @@ end PrettyPrinting
 
 open Lean Core
 
-/-- Premises from a module whose name has one of the following as a component are not retrieved.
-  **TODO**: remove `"Std"` once the server is updated to 4.15.0. -/
+/-- Premises from a module whose name has one of the following as a component are not retrieved. -/
 def moduleBlackList : Array String := #[
   "Aesop", "Auto", "Cli", "CodeAction", "DocGen4", "Duper", "ImportGraph", "Lake", "Lean", "LeanSearchClient", "Linter", "Mathport",
-  "MD4Lean", "Plausible", "ProofWidgets", "Qq", "QuerySMT", "Std", "Tactic", "TacticExtra", "Test", "Testing", "UnicodeBasic", "Util"
+  "MD4Lean", "Plausible", "ProofWidgets", "Qq", "QuerySMT", "Tactic", "TacticExtra", "Test", "Testing", "UnicodeBasic", "Util"
 ]
 
 /-- A premise whose name has one of the following as a component is not retrieved. -/
