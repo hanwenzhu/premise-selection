@@ -22,10 +22,17 @@ example (a b : Nat) : a + b = b + a := by
   suggest_premises
   apply Nat.add_comm
 
+-- The output is nonsense if no imported module and local premise information is provided
+-- (i.e. no premise to select from)
 #eval show CoreM _ from do
-  let url ← getApiUrlM
+  let url := getApiBaseUrl (← getOptions)
   selectPremisesCore url "a b : Nat
-    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none none 16
+    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none none 2
+
+#eval show CoreM _ from do
+  let url := getApiBaseUrl (← getOptions)
+  selectPremisesCore url "a b : Nat
+    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none (some #[← Premise.fromName ``Nat.add.comm]) 2
 
 end Profiling
 
@@ -47,10 +54,13 @@ example (a b : Nat) : a + (b + 1) = (a + b) + 1 := by
 
 end Cloud
 
+-- Check the legacy API works
+
 deriving instance FromJson for Suggestion in
-def callApiLegacy (apiUrl : String) (state : String)
+def callApiLegacy (apiBaseUrl : String) (state : String)
     (importedModules : Option (Array Name)) (newPremises : Option (Array Name))
     (k : Nat) : IO (Array Suggestion) := do
+  let apiUrl := apiBaseUrl ++ "/retrieve"
   let data := Json.mkObj [
     ("state", .str state),
     ("imported_modules", toJson importedModules),
@@ -78,8 +88,8 @@ def callApiLegacy (apiUrl : String) (state : String)
 
 deriving instance Repr for Suggestion in
 #eval show CoreM _ from do
-  let url ← Cloud.getApiUrlM
-  callApiLegacy url "a b : Nat\n⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none #[``Nat.add_comm] 10
+  let baseUrl := Cloud.getApiBaseUrl (← getOptions)
+  callApiLegacy baseUrl "a b : Nat\n⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none #[``Nat.add_comm] 10
 
 section Premise
 
@@ -95,7 +105,7 @@ info: { name := `Nat.add_comm, decl := "theorem Nat.add_comm (n m : Nat) : Eq (H
 #guard_msgs in #eval Premise.fromName ``Nat.add_comm
 
 #eval show MetaM _ from do
-  let names ← Premise.getNames (← Cloud.getIndexedModules)
+  let names ← Premise.getNames (← Cloud.getIndexedModules (Cloud.getApiBaseUrl (← getOptions)))
   assert! names.contains ``add_comm_nat
   IO.eprintln (names.take 100)
 
@@ -120,7 +130,7 @@ end Generated
 
 #time
 #eval show MetaM _ from do
-  let premises ← Premise.getPremises (← Cloud.getIndexedModules)
+  let premises ← Premise.getPremises (← Cloud.getIndexedModules (Cloud.getApiBaseUrl (← getOptions)))
   assert! 10000 <= premises.size && premises.size < 20000
   return premises.size
 
