@@ -39,7 +39,7 @@ end Profiling
 set_option trace.premiseSelection.debug true
 
 elab "simp_all_premises" k:num : tactic => do
-  let suggestions ← selectPremises (← Elab.Tactic.getMainGoal) k.getNat
+  let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions := k.getNat }
   let simpLemmas : Array (TSyntax `Lean.Parser.Tactic.simpLemma) ←
     suggestions.mapM fun suggestion => do
       let name := ⟨(mkIdent suggestion.name).raw⟩
@@ -119,10 +119,10 @@ info: { name := `Nat.add_comm, decl := "theorem Nat.add_comm (n m : Nat) : Eq (H
 
 section Generated
 
-/-! Generate 10000 theorems -/
+/-! Generate 1000 theorems -/
 
 #eval show Elab.Command.CommandElabM _ from do
-  for i in [0:10000] do
+  for i in [0:1000] do
     let name : Name := .str (.str .anonymous "Generated") s!"theorem{i}"
     Elab.Command.elabCommand (← `(command| theorem $(mkIdent name) : $(Syntax.mkNatLit i) = $(Syntax.mkNatLit i) := rfl))
 
@@ -131,11 +131,23 @@ end Generated
 #time
 #eval show MetaM _ from do
   let premises ← Premise.getPremises (← Cloud.getIndexedModules (Cloud.getApiBaseUrl (← getOptions)))
-  assert! 10000 <= premises.size && premises.size < 20000
+  assert! 1000 <= premises.size && premises.size < 2000
   return premises.size
 
--- This makes the server OOM
+-- This might make the server OOM
 -- example : 4882 = 4882 := by
 --   suggest_premises
 
 end Premise
+
+section MePo
+
+open MePo
+
+set_premise_selector fun g _ => mepo (useRarity := true) g
+
+example (a b : Nat) : a + b = b + a := by
+  suggest_premises
+  apply Nat.add_comm
+
+end MePo
