@@ -94,20 +94,27 @@ def selectPremisesCore (apiBaseUrl : String) (state : String)
     "-X", "POST",
     "--header", "Content-Type: application/json",
     "--user-agent", "LeanProver (https://leanprover-community.github.io/)",
-    "--data-raw", data.compress,
+    -- We put data in stdin rather than command argument, because the data may be too long
+    "--data", "@-",
     apiUrl
   ]
-  let out ← IO.Process.output { cmd := "curl", args := curlArgs }
 
-  if out.exitCode != 0 then
+  let child ← IO.Process.spawn { cmd := "curl", args := curlArgs, stdin := .piped, stdout := .piped, stderr := .piped }
+  let (stdin, child) ← child.takeStdin
+  stdin.putStr data.compress
+  let exitCode ← child.wait
+  let stdout ← child.stdout.readToEnd
+
+  if exitCode != 0 then
+    let stderr ← child.stderr.readToEnd
     IO.throwServerError <|
       "Could not send API request to select premises. " ++
-      s!"curl exited with code {out.exitCode}:\n{out.stderr}"
+      s!"curl exited with code {exitCode}:\n{stderr}"
 
-  match Json.parse out.stdout >>= fromJson? with
+  match Json.parse stdout >>= fromJson? with
   | .ok result => return result
   | .error e => IO.throwServerError <|
-      s!"Could not parse premise retrieval output (error: {e})\nRaw output:\n{out.stdout}"
+      s!"Could not parse premise retrieval output (error: {e})\nRaw output:\n{stdout}"
 
 def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   let env ← getEnv
