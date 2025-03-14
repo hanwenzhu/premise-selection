@@ -182,6 +182,17 @@ class Premise(BaseInfo):
         return prettified
 
 
+class SimplePremise(Premise):
+    """A premise that only has name, pretty-printed string, and module information"""
+    def __init__(self, name: str, decl: str, module: str):
+        self.decl: str = decl
+        # HACK: here the irrelevant fields are given junk values
+        Premise.__init__(self, name, module, 0, 0, 0, "", [], "", None, True, True)
+
+    def to_string(self):
+        return self.decl
+
+
 def read_ntp_toolkit(
     data_dir: str,
 ) -> Iterator[Tuple[str, int, Dict[str, Any]]]:
@@ -348,6 +359,17 @@ class Corpus:
         """The (transitive) imports of each module"""
         self.modules = modules
         """Names of all modules"""
+
+    def add_premise(self, premise: Premise):
+        self.premises.append(premise)
+        self.module_to_premises.setdefault(premise.module, []).append(premise.name)
+        self.name2premise[premise.name] = premise
+        self.unfiltered_premises.append(premise)
+        if premise.module not in self.modules:
+            self.modules.append(premise.module)
+        # NOTE: in principle, self.imports should also be changed;
+        # however, self.imports is not used by the server (which doesn't use the function `accessible_premises`)
+        # and instead the client determines this set
 
     def accessible_premises(self, module: str, line: int, column: int, add_modules: Optional[Set[str]] = None) -> PremiseSet:
         """Get premises veisible to a location in source (unbundled version of get_accessible_premies)."""

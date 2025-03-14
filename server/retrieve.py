@@ -3,7 +3,7 @@
 # RAM: 4.8 GB on Colab
 
 import os
-from typing import Optional
+from typing import Optional, List, Dict, Union
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -11,7 +11,7 @@ import torch
 from huggingface_hub import hf_hub_download
 import faiss
 
-from models import Corpus, PremiseSet
+from models import Corpus, PremiseSet, Premise
 
 model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-mar13")
 
@@ -41,7 +41,7 @@ index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
 index.add(corpus_embeddings)  # type: ignore
 
 
-def retrieve_premises_core(states: str | list[str], k=8, new_premises: Optional[list[dict[str, str]]] = None, **kwargs):
+def retrieve_premises_core(states: Union[str, List[str]], k=8, new_premises: Optional[List[Dict[str, str]]] = None, **kwargs):
     if isinstance(states, str):
         return_list = False
         states = [states]
@@ -90,9 +90,9 @@ def retrieve_premises_core(states: str | list[str], k=8, new_premises: Optional[
         return scored_premises[0]
 
 def retrieve_premises(
-    states: str | list[str],
-    imported_modules: Optional[list[str]],
-    new_premises: Optional[list[dict[str, str]]],
+    states: Union[str, List[str]],
+    imported_modules: Optional[List[str]],
+    new_premises: Optional[List[Dict[str, str]]],
     k: int
 ):
     kwargs = {}
@@ -111,3 +111,12 @@ def retrieve_premises(
     sel = faiss.PyCallbackIDSelector(lambda i: corpus.premises[i] in accessible_premises)
     kwargs["params"] = faiss.SearchParametersHNSW(sel=sel)  # type: ignore
     return retrieve_premises_core(states, k, new_premises, **kwargs)
+
+def add_premise(premise: Premise):
+    """**Permanently** adds a premise to the index (for the current session).
+    Warning: this is (as of currently) only intended for testing / easier benchmarking.
+    In most cases, the `new_premises` field of /retrieve should be used instead.
+    """
+    corpus.add_premise(premise)
+    premise_embedding = model.encode(premise.to_string())
+    index.add(premise_embedding)  # type: ignore

@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
-from retrieve import corpus, retrieve_premises
+
+from models import SimplePremise
+from retrieve import corpus, retrieve_premises, add_premise
 
 app = Flask(__name__)
 
@@ -31,6 +33,19 @@ def indexed_premises():
 def indexed_modules():
     modules = corpus.modules
     return jsonify(modules)
+
+@app.route("/add-premises", methods=["POST"])
+def add_premises():
+    data = request.json
+    if not data:
+        return jsonify({"success": False, "error": "No JSON data provided"}), 400
+    premise = SimplePremise(
+        name=data["name"],
+        decl=data["decl"],
+        module=data["module"],
+    )
+    add_premise(premise)
+    return jsonify({"success": True, "warning": "use /retrieve instead with new_premises"})
 
 if __name__ == "__main__":
     app.run(debug=False)
