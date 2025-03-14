@@ -117,6 +117,8 @@ def add_premise_to_corpus_index(premise: Premise):
     Warning: this is (as of currently) only intended for testing / easier benchmarking.
     In most cases, the `new_premises` field of /retrieve should be used instead.
     """
+    # WARNING: this will override existing premise if their names coincide.
+    # For now, only use for tests.
     corpus.add_premise(premise)
     premise_embedding = model.encode(premise.to_string())
     index.add(premise_embedding)  # type: ignore

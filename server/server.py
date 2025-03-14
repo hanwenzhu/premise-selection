@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 
 from models import SimplePremise
-from retrieve import corpus, retrieve_premises, add_premise
+from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index
 
 app = Flask(__name__)
 
