@@ -116,6 +116,12 @@ def selectPremisesCore (apiBaseUrl : String) (state : String)
   | .error e => IO.throwServerError <|
       s!"Could not parse premise retrieval output (error: {e})\nRaw output:\n{stdout}"
 
+/-- Get new premises in the environment that are not indexed by the server -/
+def getNewPremises (chunkSize := 256) : CoreM (Array Premise) := do
+  let indexedModules ← getIndexedModules (getApiBaseUrl (← getOptions))
+  let newPremises ← Premise.getPremises indexedModules (chunkSize := chunkSize)
+  return newPremises
+
 def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   let env ← getEnv
   let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ Meta.ppGoal goal
@@ -123,8 +129,7 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   trace[premiseSelection.debug] m!"State: {state}"
 
   let importedModules := env.allImportedModuleNames
-  let indexedModules ← getIndexedModules (getApiBaseUrl (← getOptions))
-  let newPremises ← Premise.getPremises indexedModules
+  let newPremises ← getNewPremises
   let apiBaseUrl := getApiBaseUrl (← getOptions)
 
   let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do

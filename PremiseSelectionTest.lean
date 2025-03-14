@@ -130,7 +130,7 @@ end Generated
 
 #time
 #eval show MetaM _ from do
-  let premises ← Premise.getPremises (← Cloud.getIndexedModules (Cloud.getApiBaseUrl (← getOptions)))
+  let premises ← Cloud.getNewPremises
   assert! 1000 <= premises.size && premises.size < 2000
   return premises.size
 

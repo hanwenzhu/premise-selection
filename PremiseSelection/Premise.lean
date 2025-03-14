@@ -4,7 +4,7 @@ Getting new user-defined premises in an environment
 import PremiseSelection.Basic
 import Batteries.Data.List.Basic
 
-open Lean
+open Lean Core
 
 namespace Lean.PremiseSelection
 
@@ -104,9 +104,44 @@ def fromName (name : Name) : CoreM Premise := do
   Premise.fromNameCacheRef.modify fun cache => cache.insert name premise
   return premise
 
-end PrettyPrinting
+/--
+Applies the monadic function `f` on every element `x` in the list, left-to-right, and returns the
+concatenation of the results.
 
-open Lean Core
+(Thomas: copied from newest Lean core.)
+-/
+@[inline]
+def _root_.List.flatMapM {m : Type u → Type v} [Monad m] {α : Type w} {β : Type u} (f : α → m (List β)) (as : List α) : m (List β) :=
+  let rec @[specialize] loop
+    | [],     bs => pure bs.reverse.flatten
+    | a :: as, bs => do
+      let bs' ← f a
+      loop as (bs' :: bs)
+  loop as []
+
+/-- This is equivalent to `names.mapM Premise.fromName`, but it processes chunks in parallel. -/
+def fromNames (names : Array Name) (chunkSize := 256) : CoreM (Array Premise) := do
+  if chunkSize == 1 then
+    let premises ← names.mapM Premise.fromName
+    return premises
+
+  else
+    let ctxCore ← readThe Core.Context
+    let sCore ← getThe Core.State
+
+    -- The only reason for toList is because `List.toChunks` exists
+    -- In my tests, chunking is about 25% faster than not chunking, so the gain is not significant (can probably remove)
+    -- (This is a monadic version of `List.mapAsyncChunked` in Mathlib)
+    let premiseChunkTasks ← names.toList.toChunks chunkSize |>.mapM fun names =>
+      IO.asTask do
+        let (premises, _) ← CoreM.toIO (ctx := ctxCore) (s := sCore) do
+          names.mapM Premise.fromName
+        return premises
+    let premises ← premiseChunkTasks.flatMapM fun task => do
+      IO.ofExcept (← IO.wait task)
+    return premises.toArray
+
+end PrettyPrinting
 
 /-- Premises from a module whose name has one of the following as a component are not retrieved. -/
 def moduleBlackList : Array String := #[
@@ -150,7 +185,7 @@ def getModules (exclude : NameSet) : CoreM (Array ModuleData) := do
 
   return modules
 
-/-- Set of new premises in the environment -/
+/-- Get names of new premises in the environment -/
 def getNames (excludeModules : NameSet) : CoreM (Array Name) := do
   let env ← getEnv
   let mut names := #[]
@@ -169,42 +204,10 @@ def getNames (excludeModules : NameSet) : CoreM (Array Name) := do
       names := names.push name
   return names
 
-/--
-Applies the monadic function `f` on every element `x` in the list, left-to-right, and returns the
-concatenation of the results.
-
-(Thomas: copied from newest Lean core.)
--/
-@[inline]
-def _root_.List.flatMapM {m : Type u → Type v} [Monad m] {α : Type w} {β : Type u} (f : α → m (List β)) (as : List α) : m (List β) :=
-  let rec @[specialize] loop
-    | [],     bs => pure bs.reverse.flatten
-    | a :: as, bs => do
-      let bs' ← f a
-      loop as (bs' :: bs)
-  loop as []
-
+/-- Get new premises in the environment -/
 def getPremises (excludeModules : NameSet) (chunkSize := 256) : CoreM (Array Premise) := do
-  let name ← getNames excludeModules
-
-  if chunkSize == 1 then
-    let premises ← name.mapM Premise.fromName
-    return premises
-
-  else
-    let ctxCore ← readThe Core.Context
-    let sCore ← getThe Core.State
-
-    -- The only reason for toList is because `List.toChunks` exists
-    -- In my tests, chunking is about 25% faster than not chunking, so the gain is not significant (can probably remove)
-    -- (This is a monadic version of `List.mapAsyncChunked` in Mathlib)
-    let premiseChunkTasks ← name.toList.toChunks chunkSize |>.mapM fun names =>
-      IO.asTask do
-        let (premises, _) ← CoreM.toIO (ctx := ctxCore) (s := sCore) do
-          names.mapM Premise.fromName
-        return premises
-    let premises ← premiseChunkTasks.flatMapM fun task => do
-      IO.ofExcept (← IO.wait task)
-    return premises.toArray
+  let names ← getNames excludeModules
+  let premises ← fromNames names (chunkSize := chunkSize)
+  return premises
 
 end Lean.PremiseSelection.Premise
