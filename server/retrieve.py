@@ -1,0 +1,113 @@
+# WIP script to retrieve premises using the model
+# Notebook version: see retrieve.ipynb on Colab
+# RAM: 4.8 GB on Colab
+
+import os
+from typing import Optional
+
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import torch
+from huggingface_hub import hf_hub_download
+import faiss
+
+from models import Corpus, PremiseSet
+
+model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-mar13")
+
+# Get corpus of premises, including their names and serialized expressions
+file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_416.tar.gz", revision="main")
+print(f"Mathlib declarations data saved to {file_path}")
+# !tar -xf {file_path}
+ntp_toolkit_mathlib_path = "./Mathlib"
+corpus = Corpus.from_ntp_toolkit(ntp_toolkit_mathlib_path)
+
+
+# Get corpus embeddings
+file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="embeddings_mathlib_416.npy", revision="main")
+corpus_embeddings = np.load(file_path)
+# Note that these embeddings were generated using the following (takes too long on a CPU):
+# corpus_embeddings = model.encode(
+#     [premise.to_string() for premise in corpus_premises],
+#     show_progress_bar=True,
+#     batch_size=32,
+#     convert_to_tensor=True,
+# )
+
+assert corpus_embeddings.shape[0] == len(corpus.premises)
+
+# Build index to search from using FAISS
+index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
+index.add(corpus_embeddings)  # type: ignore
+
+
+def retrieve_premises_core(states: str | list[str], k=8, new_premises: Optional[list[dict[str, str]]] = None, **kwargs):
+    if isinstance(states, str):
+        return_list = False
+        states = [states]
+    else:
+        return_list = True
+
+    # Retrieve premises from indexed premises
+    state_embeddings = model.encode(states)
+    scoress, indicess = index.search(state_embeddings, k, **kwargs)  # type: ignore
+    scored_indexed_premises = [
+        [
+            # TODO: remove `"premise"` here
+            # TODO: make this a class
+            {"score": score.item(), "name": corpus.premises[i].name, "decl": corpus.premises[i].to_string()}
+            for score, i in zip(scores, indices)
+        ]
+        for scores, indices in zip(scoress, indicess)
+    ]
+
+    # Embed and rank new user-defined premises
+    if not new_premises:
+        new_premises = []
+        # new_premise_embeddings = torch.zeros(0, state_embeddings.shape[1]).to(state_embeddings)
+        new_premise_embeddings = np.zeros((0, state_embeddings.shape[1]), dtype=state_embeddings.dtype)
+    else:
+        new_premise_embeddings = model.encode([premise_data["decl"] for premise_data in new_premises])
+    new_scoress = model.similarity(state_embeddings, new_premise_embeddings)
+    scored_new_premises = [
+        [
+            # TODO: remove `"premise"` here
+            {"score": score.item(), "name": premise_data["name"], "decl": premise_data["decl"]}
+            for score, premise_data in zip(scores, new_premises)
+        ]
+        for scores in new_scoress
+    ]
+
+    # Combine indexed and new premises
+    scored_premises = [
+        sorted(indexed + new, key=lambda p: p["score"], reverse=True)[:k]
+        for indexed, new in zip(scored_indexed_premises, scored_new_premises)
+    ]
+
+    if return_list:
+        return scored_premises
+    else:
+        return scored_premises[0]
+
+def retrieve_premises(
+    states: str | list[str],
+    imported_modules: Optional[list[str]],
+    new_premises: Optional[list[dict[str, str]]],
+    k: int
+):
+    kwargs = {}
+    if imported_modules is None:
+        imported_modules = []
+    accessible_premises = PremiseSet(corpus, set(imported_modules))
+    # accessible_premises = corpus.accessible_premises(module, line, column)
+    if new_premises is not None:
+        for premise_data in new_premises:
+            # TODO: better JSON schema handling
+            name = premise_data["name"]
+            if name in corpus.name2premise:
+                premise = corpus.name2premise[name]
+                # User-uploaded premise overrides server-side premise
+                accessible_premises.remove(premise)
+    sel = faiss.PyCallbackIDSelector(lambda i: corpus.premises[i] in accessible_premises)
+    kwargs["params"] = faiss.SearchParametersHNSW(sel=sel)  # type: ignore
+    return retrieve_premises_core(states, k, new_premises, **kwargs)
