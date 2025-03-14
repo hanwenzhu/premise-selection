@@ -119,6 +119,7 @@ def add_premise_to_corpus_index(premise: Premise):
     """
     # WARNING: this will override existing premise if their names coincide.
     # For now, only use for tests.
+    # WARNING: this is not thread safe -- it relies on the order of corpus = the order of the index.
     corpus.add_premise(premise)
-    premise_embedding = model.encode(premise.to_string())
+    premise_embedding = model.encode([premise.to_string()])
     index.add(premise_embedding)  # type: ignore
