@@ -99,6 +99,8 @@ def retrieve_premises(
     if imported_modules is None:
         imported_modules = []
     accessible_premises = PremiseSet(corpus, set(imported_modules))
+    # NOTE: corpus.accessible_premises is currently not used by the server
+    # which should be taken into account in a future refactor
     # accessible_premises = corpus.accessible_premises(module, line, column)
     if new_premises is not None:
         for premise_data in new_premises:
@@ -112,6 +114,7 @@ def retrieve_premises(
     kwargs["params"] = faiss.SearchParametersHNSW(sel=sel)  # type: ignore
     return retrieve_premises_core(states, k, new_premises, **kwargs)
 
+# original_modules: List[str] = corpus.modules.copy()
 def add_premise_to_corpus_index(premise: Premise):
     """**Permanently** adds a premise to the index (for the current session).
     Warning: this is (as of currently) only intended for testing / easier benchmarking.
@@ -120,6 +123,20 @@ def add_premise_to_corpus_index(premise: Premise):
     # WARNING: this will override existing premise if their names coincide.
     # For now, only use for tests.
     # WARNING: this is not thread safe -- it relies on the order of corpus = the order of the index.
+    # if premise.module in original_modules:
+    #     raise ValueError("Added premise is not from a new module")
+    if premise.module in corpus.module_to_premises and premise.name in corpus.module_to_premises[premise.module]:
+        # We don't add duplicate premises from the same module
+        return
     corpus.add_premise(premise)
     premise_embedding = model.encode([premise.to_string()])
     index.add(premise_embedding)  # type: ignore
+
+# def remove_added_modules():
+#     """Remove all new modules added using `add_premise_to_corpus_index`.
+#     Warning: same as `add_premise_to_corpus_index`, this is currently for test only.
+#     It depends on the client only adding premises from new modules."""
+#     for module in corpus.modules:
+#         if module not in original_modules:
+#             del corpus.module_to_premises[module]
+#     corpus.modules = original_modules
