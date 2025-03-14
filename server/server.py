@@ -34,8 +34,8 @@ def indexed_modules():
     modules = corpus.modules
     return jsonify(modules)
 
-@app.route("/add-premises", methods=["POST"])
-def add_premises():
+@app.route("/add-premise", methods=["POST"])
+def add_premise():
     data = request.json
     if not data:
         return jsonify({"success": False, "error": "No JSON data provided"}), 400
@@ -44,7 +44,7 @@ def add_premises():
         decl=data["decl"],
         module=data["module"],
     )
-    add_premise(premise)
+    add_premise_to_corpus_index(premise)
     return jsonify({"success": True, "warning": "use /retrieve instead with new_premises"})
 
 if __name__ == "__main__":

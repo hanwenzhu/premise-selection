@@ -112,7 +112,7 @@ def retrieve_premises(
     kwargs["params"] = faiss.SearchParametersHNSW(sel=sel)  # type: ignore
     return retrieve_premises_core(states, k, new_premises, **kwargs)
 
-def add_premise(premise: Premise):
+def add_premise_to_corpus_index(premise: Premise):
     """**Permanently** adds a premise to the index (for the current session).
     Warning: this is (as of currently) only intended for testing / easier benchmarking.
     In most cases, the `new_premises` field of /retrieve should be used instead.
