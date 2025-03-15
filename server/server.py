@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 
 from models import SimplePremise
-from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index
+from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index, added_premises
 
 app = Flask(__name__)
 
@@ -46,6 +46,10 @@ def add_premise():
     )
     add_premise_to_corpus_index(premise)
     return jsonify({"success": True, "warning": "use /retrieve instead with new_premises"})
+
+@app.route("/added-premises", methods=["GET"])
+def added_premises_():
+    return jsonify(added_premises)
 
 if __name__ == "__main__":
     app.run(debug=False)

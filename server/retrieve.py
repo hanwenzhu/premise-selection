@@ -115,6 +115,7 @@ def retrieve_premises(
     return retrieve_premises_core(states, k, new_premises, **kwargs)
 
 # original_modules: List[str] = corpus.modules.copy()
+added_premises: List[str] = []
 def add_premise_to_corpus_index(premise: Premise):
     """**Permanently** adds a premise to the index (for the current session).
     Warning: this is (as of currently) only intended for testing / easier benchmarking.
@@ -131,6 +132,7 @@ def add_premise_to_corpus_index(premise: Premise):
     corpus.add_premise(premise)
     premise_embedding = model.encode([premise.to_string()])
     index.add(premise_embedding)  # type: ignore
+    added_premises.append(premise.name)
 
 # def remove_added_modules():
 #     """Remove all new modules added using `add_premise_to_corpus_index`.
