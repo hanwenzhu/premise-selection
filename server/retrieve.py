@@ -13,7 +13,7 @@ import faiss
 
 from models import Corpus, PremiseSet, Premise
 
-model = SentenceTransformer("hanwenzhu/all-MiniLM-L12-v2-lr2e-4-bs256-nneg3-ml-ne5-mar17")
+model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-mar17")
 
 # Get corpus of premises, including their names and serialized expressions
 file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_416.tar.gz", revision="main")
@@ -23,7 +23,7 @@ ntp_toolkit_mathlib_path = "./Mathlib"
 corpus = Corpus.from_ntp_toolkit(ntp_toolkit_mathlib_path)
 
 # Get corpus embeddings
-file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="embeddings_all-MiniLM-L12-v2-lr2e-4-bs256-nneg3-ml-ne5_416.npy", revision="main")
+file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_416.npy", revision="main")
 corpus_embeddings = np.load(file_path)
 # Note that these embeddings were generated using the following (takes too long on a CPU):
 # corpus_embeddings = model.encode(
