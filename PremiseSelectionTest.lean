@@ -25,14 +25,12 @@ example (a b : Nat) : a + b = b + a := by
 -- The output is nonsense if no imported module and local premise information is provided
 -- (i.e. no premise to select from)
 #eval show CoreM _ from do
-  let url := getApiBaseUrl (← getOptions)
-  selectPremisesCore url "a b : Nat
-    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none none 2
+  selectPremisesCore "a b : Nat
+    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[] #[] 2
 
 #eval show CoreM _ from do
-  let url := getApiBaseUrl (← getOptions)
-  selectPremisesCore url "a b : Nat
-    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none (some #[← Premise.fromName ``Nat.add.comm]) 2
+  selectPremisesCore "a b : Nat
+    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[] #[← Premise.fromName ``Nat.add.comm false] 2
 
 end Profiling
 
@@ -58,7 +56,7 @@ end Cloud
 
 deriving instance FromJson for Suggestion in
 def callApiLegacy (apiBaseUrl : String) (state : String)
-    (importedModules : Option (Array Name)) (newPremises : Option (Array Name))
+    (importedModules : Array Name) (newPremises : Array Name)
     (k : Nat) : IO (Array Suggestion) := do
   let apiUrl := apiBaseUrl ++ "/retrieve"
   let data := Json.mkObj [
@@ -89,28 +87,34 @@ def callApiLegacy (apiBaseUrl : String) (state : String)
 deriving instance Repr for Suggestion in
 #eval show CoreM _ from do
   let baseUrl := Cloud.getApiBaseUrl (← getOptions)
-  callApiLegacy baseUrl "a b : Nat\n⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" none #[``Nat.add_comm] 10
+  callApiLegacy baseUrl "a b : Nat\n⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[``Nat.add_comm] 10
 
 section Premise
+
+#eval Cloud.getUnindexedImportedPremises
+#eval Cloud.getUnindexedLocalPremises
+#time
+#eval Cloud.getUnindexedPremises
 
 /--
 info: { name := `Nat.add,
   decl := "/-- Addition of natural numbers.\n\nThis definition is overridden in both the kernel and the compiler to efficiently\nevaluate using the \"bignum\" representation (see `Nat`). The definition provided\nhere is the logical model (and it is soundness-critical that they coincide).\n -/\ndef Nat.add : Nat → Nat → Nat" }
 -/
-#guard_msgs in #eval Premise.fromName ``Nat.add
+#guard_msgs in #eval Premise.fromName ``Nat.add false
 
 /--
 info: { name := `Nat.add_comm, decl := "theorem Nat.add_comm (n m : Nat) : Eq (HAdd.hAdd n m) (HAdd.hAdd m n)" }
 -/
-#guard_msgs in #eval Premise.fromName ``Nat.add_comm
-
-#eval show MetaM _ from do
-  let names ← Premise.getNames (← Cloud.getIndexedModules (Cloud.getApiBaseUrl (← getOptions)))
-  assert! names.contains ``add_comm_nat
-  IO.eprintln (names.take 100)
+#guard_msgs in #eval Premise.fromName ``Nat.add_comm false
 
 -- set_option profiler true
 -- set_option profiler.threshold 1
+
+-- #time
+-- #eval show MetaM _ from do
+--   let env ← getEnv
+--   for (name, ci) in env.constants do
+--     discard $ Premise.fromName name
 
 -- #eval show IO _ from do
 --   let cache ← Premise.fromNameCacheRef.get
@@ -130,24 +134,30 @@ end Generated
 
 #time
 #eval show MetaM _ from do
-  let premises ← Cloud.getNewPremises
+  let premises ← Cloud.getUnindexedLocalPremises
   assert! 1000 <= premises.size && premises.size < 2000
-  return premises.size
+  return premises
 
 -- This might make the server OOM
 -- example : 4882 = 4882 := by
 --   suggest_premises
 
+-- Stress test
+-- #eval show MetaM _ from do
+--   let premises : Array Premise := (Array.range 500).map fun n =>
+--     { name := s!"thm{n}".toName, decl := "theorem MeasureTheory.pdf.indepFun_iff_pdf_prod_eq_pdf_mul_pdf {Ω : Type u_1} {E : Type u_2} [MeasurableSpace E] {m : MeasurableSpace Ω} {ℙ : Measure Ω} {μ : Measure E} {F : Type u_3} [MeasurableSpace F] {ν : Measure F} {X : Ω → E} {Y : Ω → F} [IsFiniteMeasure ℙ] [SigmaFinite μ] [SigmaFinite ν] [HasPDF (fun (ω : Ω) => (X ω, Y ω)) ℙ (μ.prod ν)] : ProbabilityTheory.IndepFun X Y ℙ ↔ pdf (fun (ω : Ω) => (X ω, Y ω)) ℙ (μ.prod ν) =ᶠ[ae (μ.prod ν)] fun (z : E × F) => pdf X ℙ μ z.1 * pdf Y ℙ ν z.2" }
+--   Cloud.selectPremisesCore "a b : Nat ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[] premises 32
+
 end Premise
 
-section MePo
+-- section MePo
 
-open MePo
+-- open MePo
 
-set_premise_selector fun g _ => mepo (useRarity := true) g
+-- set_premise_selector fun g _ => mepo (useRarity := true) g
 
-example (a b : Nat) : a + b = b + a := by
-  suggest_premises
-  apply Nat.add_comm
+-- example (a b : Nat) : a + b = b + a := by
+--   suggest_premises
+--   apply Nat.add_comm
 
-end MePo
+-- end MePo

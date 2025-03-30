@@ -15,9 +15,9 @@ def retrieve():
 
     # TODO: better data validation method (eg pydantic/jsonschema)
     state: str | List[str] = data["state"]
-    imported_modules: List[str] = data.get("imported_modules", [])  # list of module names
-    local_premises: List[str] = data.get("local_premises", [])  # list of local premises indexed by the server
-    new_premises: List[Dict[str, str]] = data.get("new_premises", [])  # list of dicts with keys "name" and "decl", new (usually unindexed) premises
+    imported_modules: List[str] = data["imported_modules"]  # list of module names
+    local_premises: List[str] = data["local_premises"]  # list of local premises indexed by the server
+    new_premises: List[Dict[str, str]] = data["new_premises"]  # list of dicts with keys "name" and "decl", new (usually unindexed) premises
     k: int = data.get("k", 32)
 
     if k <= 0:
