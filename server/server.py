@@ -1,7 +1,9 @@
+from typing import Optional, List, Dict
+
 from flask import Flask, request, jsonify
 
 from models import SimplePremise
-from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index, added_premises
+from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index, added_premises, MAX_NEW_PREMISES, MAX_K
 
 app = Flask(__name__)
 
@@ -10,19 +12,27 @@ def retrieve():
     data = request.json
     if not data:
         return jsonify({"error": "No JSON data provided"}), 400
-    state = data["state"]
-    imported_modules = data.get("imported_modules")
-    new_premises = data.get("new_premises")
-    k = data.get("k", 256)
+
+    # TODO: better data validation method (eg pydantic/jsonschema)
+    state: str | List[str] = data["state"]
+    imported_modules: List[str] = data.get("imported_modules", [])  # list of module names
+    local_premises: List[str] = data.get("local_premises", [])  # list of local premises indexed by the server
+    new_premises: List[Dict[str, str]] = data.get("new_premises", [])  # list of dicts with keys "name" and "decl", new (usually unindexed) premises
+    k: int = data.get("k", 32)
+
     if k <= 0:
         return jsonify([])
+    if k > MAX_K:
+        return jsonify({"error", f"value of k ({k}) exceeds maximum ({MAX_K})"})
+    if new_premises is not None and len(new_premises) > MAX_NEW_PREMISES:
+        return jsonify({"error", f"{len(new_premises)} new premises uploaded, exceeding maximum ({MAX_NEW_PREMISES})"}), 400
 
-    # Legacy support
-    if new_premises is None and data.get("local_premises"):
-        new_premises = [{"name": name, "decl": corpus.name2premise[name].to_string()} for name in data["local_premises"] if name in corpus.name2premise]
-
-    premises = retrieve_premises(state, imported_modules, new_premises, k=k)
+    premises = retrieve_premises(state, imported_modules, local_premises, new_premises, k=k)
     return jsonify(premises)
+
+@app.route("/max-new-premises", methods=["GET"])
+def max_new_premises():
+    return jsonify(MAX_NEW_PREMISES)
 
 @app.route("/indexed-premises", methods=["GET"])
 def indexed_premises():

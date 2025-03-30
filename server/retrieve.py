@@ -13,6 +13,10 @@ import faiss
 
 from models import Corpus, PremiseSet, Premise
 
+MAX_NEW_PREMISES = 4192  # TODO tune this number
+MINIBATCH_SIZE = 32 if torch.cuda.is_available() else 16  # batch size for encoding new premises (TODO tune this number)
+MAX_K = 1024
+
 model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-mar17")
 
 # Get corpus of premises, including their names and serialized expressions
@@ -48,7 +52,7 @@ def retrieve_premises_core(states: Union[str, List[str]], k=8, new_premises: Opt
         return_list = True
 
     # Retrieve premises from indexed premises
-    state_embeddings = model.encode(states)
+    state_embeddings = model.encode(states, batch_size=MINIBATCH_SIZE)
     scoress, indicess = index.search(state_embeddings, k, **kwargs)  # type: ignore
     scored_indexed_premises = [
         [
@@ -66,7 +70,7 @@ def retrieve_premises_core(states: Union[str, List[str]], k=8, new_premises: Opt
         # new_premise_embeddings = torch.zeros(0, state_embeddings.shape[1]).to(state_embeddings)
         new_premise_embeddings = np.zeros((0, state_embeddings.shape[1]), dtype=state_embeddings.dtype)
     else:
-        new_premise_embeddings = model.encode([premise_data["decl"] for premise_data in new_premises])
+        new_premise_embeddings = model.encode([premise_data["decl"] for premise_data in new_premises], batch_size=MINIBATCH_SIZE)
     new_scoress = model.similarity(state_embeddings, new_premise_embeddings)
     scored_new_premises = [
         [
@@ -90,27 +94,48 @@ def retrieve_premises_core(states: Union[str, List[str]], k=8, new_premises: Opt
 
 def retrieve_premises(
     states: Union[str, List[str]],
-    imported_modules: Optional[List[str]],
-    new_premises: Optional[List[Dict[str, str]]],
+    imported_modules: List[str],
+    local_premises: List[str],
+    new_premises: List[Dict[str, str]],
     k: int
 ):
-    kwargs = {}
-    if imported_modules is None:
-        imported_modules = []
+    """Retrieve premises from all indexed premises in:
+    imported modules + indexed premises in local_premises + unindexed premises in new_premises.
+
+    In case of duplicate names, the signature in `new_premises` overrides the signature indexed on the server.
+    """
+    if k > MAX_K:
+        raise ValueError(f"value of k ({k}) exceeds maximum ({MAX_K})")
+
+    # Accessible premises from the state, starting from imported modules
     accessible_premises = PremiseSet(corpus, set(imported_modules))
-    # NOTE: corpus.accessible_premises is currently not used by the server
-    # which should be taken into account in a future refactor
-    # accessible_premises = corpus.accessible_premises(module, line, column)
-    if new_premises is not None:
-        for premise_data in new_premises:
-            # TODO: better JSON schema handling
-            name = premise_data["name"]
-            if name in corpus.name2premise:
-                premise = corpus.name2premise[name]
-                # User-uploaded premise overrides server-side premise
-                accessible_premises.remove(premise)
+    # (NOTE: corpus.accessible_premises is currently not used by the server
+    #  which should be taken into account in a future refactor
+    #  accessible_premises = corpus.accessible_premises(module, line, column))
+
+    if len(new_premises) > MAX_NEW_PREMISES:
+        raise ValueError(f"{len(new_premises)} new premises uploaded, exceeding maximum ({MAX_NEW_PREMISES})")
+
+    # Add local_premises to accessible premises
+    for name in local_premises:
+        if name in corpus.name2premise:
+            premise = corpus.name2premise[name]
+            accessible_premises.add(premise)
+        else:
+            raise ValueError(f"Local premise {name} not indexed by the server")
+
+    # Remove user-uploaded new premises from accessible set, because they override the server-side signature
+    for premise_data in new_premises:
+        name = premise_data["name"]
+        if name in corpus.name2premise:
+            premise = corpus.name2premise[name]
+            # User-uploaded premise overrides server-side premise
+            accessible_premises.remove(premise)
+
     sel = faiss.PyCallbackIDSelector(lambda i: corpus.premises[i] in accessible_premises)
+    kwargs = {}
     kwargs["params"] = faiss.SearchParametersHNSW(sel=sel)  # type: ignore
+
     return retrieve_premises_core(states, k, new_premises, **kwargs)
 
 # original_modules: List[str] = corpus.modules.copy()
