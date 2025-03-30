@@ -158,8 +158,11 @@ class Premise(BaseInfo):
     can_benchmark: bool
     """Premise can be used for benchmarking, for determining eval/test set"""
 
+    nameless: bool = False
+    """If true, the pretty-printed to_string will not contain the premise name."""
+
     @classmethod
-    def from_dict(cls, module: str, idx_in_module: int, info: Dict[str, Any]):
+    def from_dict(cls, module: str, idx_in_module: int, info: Dict[str, Any], nameless: bool = False):
         return cls(
             module=module,
             idx_in_module=idx_in_module,
@@ -172,11 +175,15 @@ class Premise(BaseInfo):
             column=info["column"],
             is_prop=info["isProp"],
             can_benchmark=info["isHumanTheorem"],
+            nameless=nameless,
         )
 
     def to_string(self):
         args = " ".join(self.args)
-        prettified = f"{self.kind} {self.name} {args} : {self.type}"
+        if self.nameless:
+            prettified = f"{self.kind} {args} : {self.type}"
+        else:
+            prettified = f"{self.kind} {self.name} {args} : {self.type}"
         if self.doc is not None:
             prettified = f"/-- {self.doc.strip()} -/\n{prettified}"
         return prettified
@@ -215,6 +222,7 @@ def read_ntp_toolkit_modules(
         if json_file.endswith(".jsonl"):
             module = json_file.removesuffix(".jsonl")
             yield module
+
 
 class PremiseSet:
     """Represents a set of premises.
@@ -328,7 +336,7 @@ class Corpus:
     # MODULE_WHITELIST = ["Mathlib.Tactic"]
     # NAME_WHITELIST = ["Lean.Omega"]
 
-    def __init__(self, premises: List[Premise], imports: Dict[str, Set[str]], modules: List[str], filter: bool = True):
+    def __init__(self, premises: List[Premise], imports: Dict[str, Set[str]], modules: List[str], filter: bool = True, blacklist: Optional[Set[str]] = None):
         self.premises: List[Premise] = []
         """All premises in corpus"""
         self.module_to_premises: Dict[str, List[str]] = {module: [] for module in modules}
@@ -340,6 +348,8 @@ class Corpus:
 
         for premise in premises:
             if filter:
+                if blacklist is not None and premise.name in blacklist:
+                    continue
                 if any(blacklisted in premise.module.split(".") for blacklisted in self.MODULE_BLACKLIST):
                     continue
                 if any(blacklisted in premise.name.split(".") for blacklisted in self.NAME_BLACKLIST):
@@ -414,21 +424,19 @@ class Corpus:
         return self.get_accessible_negative_premises(state, add_modules=additional_modules)
 
     @classmethod
-    def from_ntp_toolkit(cls, base_dir: str, filter: bool = True, mathlib_only: bool = False):
+    def from_ntp_toolkit(cls, base_dir: str, filter: bool = True, mathlib_only: bool = False, nameless: bool = False):
         """Construct a `Corpus` of premises from `base_dir` of the ntp-toolkit outputs.
         If `filter`, filter out premises that are unlikely to be helpful for tactic generation.
         """
         blacklist_file = os.path.join(base_dir, "HammerBlacklist.jsonl")
         with open(blacklist_file) as f:
-            blacklist = json.load(f)["hammerBlacklist"]
+            blacklist = set(json.load(f)["hammerBlacklist"])
 
         premises: List[Premise] = []
         for module, i, premise_info in read_ntp_toolkit(os.path.join(base_dir, "Declarations")):
             if mathlib_only and not module.startswith("Mathlib."):
                 continue
-            premise = Premise.from_dict(module, i, premise_info)
-            if premise.name in blacklist:
-                continue
+            premise = Premise.from_dict(module, i, premise_info, nameless=nameless)
             premises.append(premise)
 
         imports: Dict[str, Set[str]] = {}
@@ -437,7 +445,7 @@ class Corpus:
 
         modules = list(read_ntp_toolkit_modules(os.path.join(base_dir, "Imports")))
 
-        return cls(premises=premises, imports=imports, modules=modules, filter=filter)
+        return cls(premises=premises, imports=imports, modules=modules, filter=filter, blacklist=blacklist)
 
 
 def read_states(base_dir: str, mathlib_only: bool = False) -> List[StateWithTactic]:
