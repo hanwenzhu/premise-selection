@@ -122,7 +122,7 @@ def retrieve_premises(
             premise = corpus.name2premise[name]
             accessible_premises.add(premise)
         else:
-            raise ValueError(f"Local premise {name} not indexed by the server")
+            continue  # not raising an error, because the supplied local premises are unfiltered, so might not be in corpus
 
     # Remove user-uploaded new premises from accessible set, because they override the server-side signature
     for premise_data in new_premises:

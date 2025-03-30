@@ -49,6 +49,7 @@ def add_premise():
     data = request.json
     if not data:
         return jsonify({"success": False, "error": "No JSON data provided"}), 400
+    # TODO: better data validation method (eg pydantic/jsonschema)
     premise = SimplePremise(
         name=data["name"],
         decl=data["decl"],
