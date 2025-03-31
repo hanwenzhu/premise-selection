@@ -52,43 +52,6 @@ example (a b : Nat) : a + (b + 1) = (a + b) + 1 := by
 
 end Cloud
 
--- Check the legacy API works
-
-deriving instance FromJson for Suggestion in
-def callApiLegacy (apiBaseUrl : String) (state : String)
-    (importedModules : Array Name) (newPremises : Array Name)
-    (k : Nat) : IO (Array Suggestion) := do
-  let apiUrl := apiBaseUrl ++ "/retrieve"
-  let data := Json.mkObj [
-    ("state", .str state),
-    ("imported_modules", toJson importedModules),
-    ("local_premises", toJson newPremises),
-    ("k", .num (.fromNat k)),
-  ]
-  let curlArgs := #[
-    "-X", "POST",
-    "--header", "Content-Type: application/json",
-    "--user-agent", "LeanProver (https://leanprover-community.github.io/)",
-    "--data-raw", data.compress,
-    apiUrl
-  ]
-  let out ← IO.Process.output { cmd := "curl", args := curlArgs }
-
-  if out.exitCode != 0 then
-    IO.throwServerError <|
-      "Could not send API request to select premises. " ++
-      s!"curl exited with code {out.exitCode}:\n{out.stderr}"
-
-  match Json.parse out.stdout >>= fromJson? with
-  | .ok result => return result
-  | .error e => IO.throwServerError <|
-      s!"Could not parse premise retrieval output (error: {e})\nRaw output:\n{out.stdout}"
-
-deriving instance Repr for Suggestion in
-#eval show CoreM _ from do
-  let baseUrl := Cloud.getApiBaseUrl (← getOptions)
-  callApiLegacy baseUrl "a b : Nat\n⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[``Nat.add_comm] 10
-
 section Premise
 
 #eval Cloud.getUnindexedImportedPremises
@@ -150,14 +113,41 @@ end Generated
 
 end Premise
 
--- section MePo
+section MePo
 
--- open MePo
+open MePo
 
--- set_premise_selector fun g _ => mepo (useRarity := true) g
+def mepoP := 0.6
+def mepoC := 2.4
+def mepoSelector : Selector := fun g config => do
+  let useRarity := true
+  let constants ← g.getConstants
+  let env ← getEnv
+  let score := if useRarity then
+    let frequency := MePo.symbolFrequency env
+    MePo.frequencyScore (frequency.findD · 0)
+  else
+    MePo.unweightedScore
+  let accept := fun ci => do
+    if let some moduleIdx := env.getModuleIdxFor? ci.name then
+      let moduleName := env.header.moduleNames[moduleIdx.toNat]!
+      if Premise.isBlackListedModule moduleName then
+        return false
+    if Premise.isBlackListedPremise env ci.name then
+      return false
+    return true
+  let suggestions ← MePo.mepo constants score accept (p := mepoP) (c := mepoC)
+  let suggestions := suggestions
+    |>.map (fun (n, s) => { name := n, score := s })
+    |>.reverse  -- some preliminary examples show the last added ones are better
+  match config.maxSuggestions with
+  | none => return suggestions
+  | some k => return suggestions.take k
 
--- example (a b : Nat) : a + b = b + a := by
---   suggest_premises
---   apply Nat.add_comm
+set_premise_selector mepoSelector
 
--- end MePo
+example (a b : Nat) : a + b = b + a := by
+  suggest_premises
+  apply Nat.add_comm
+
+end MePo
