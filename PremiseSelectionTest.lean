@@ -1,4 +1,5 @@
 import PremiseSelection
+import Lean
 
 open Lean PremiseSelection
 
@@ -58,6 +59,12 @@ section Premise
 #eval Cloud.getUnindexedLocalPremises
 #time
 #eval Cloud.getUnindexedPremises
+-- clear_premise_selection_cache
+#time
+#eval show CoreM _ from do
+  let premises ← Cloud.getIndexedPremises
+  let json := toJson premises
+  return json.compress.length
 
 /--
 info: { name := `Nat.add,
