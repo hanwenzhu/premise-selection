@@ -95,7 +95,7 @@ def retrieve_premises_core(states: Union[str, List[str]], k=8, new_premises: Opt
 def retrieve_premises(
     states: Union[str, List[str]],
     imported_modules: List[str],
-    local_premises: List[str],
+    local_premises: List[str | int],
     new_premises: List[Dict[str, str]],
     k: int
 ):
@@ -118,6 +118,10 @@ def retrieve_premises(
 
     # Add local_premises to accessible premises
     for name in local_premises:
+        # A new version of the client side optimizes by only sending the index
+        # Here we allow both versions
+        if isinstance(name, int) and 0 <= name < len(corpus.unfiltered_premises):
+            name = corpus.unfiltered_premises[name].name
         if name in corpus.name2premise:
             premise = corpus.name2premise[name]
             accessible_premises.add(premise)

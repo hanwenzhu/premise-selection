@@ -57,6 +57,9 @@ new premises either imported or defined locally.
 The reason we make the distinction between imported and local premises is only because
 we can cache the results (set of premises and their signatures if unindexed) for imported
 premises in `IO.Ref`, because they won't change unless imports are changed.
+
+Indexed premises are represented by a `Nat` (index in `getIndexedPremisesFromServer`).
+Unindexed premises are represented as a `Premise` (name and signature).
 -/
 
 /-- The maximum number of new premises to send to the server. -/
@@ -64,20 +67,20 @@ def getMaxUnindexedPremises : CoreM Nat := do
   makeRequest "GET" "/max-new-premises" none
 
 /-- A cache holding indexed premises by the server. -/
-initialize indexedPremisesFromServerRef : IO.Ref (Option NameSet) ← IO.mkRef none
-/-- Unfiltered list of all premises known by the server. The result is cached in an `IO.Ref`,
-because (assuming the server is static) the result will not change. -/
-def getIndexedPremisesFromServer : CoreM NameSet := do
+initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
+/-- Unfiltered list of all premises known by the server, as a mapping from name to index.
+The result is cached in an `IO.Ref`, because (assuming the server is static) the result will not change. -/
+def getIndexedPremisesFromServer : CoreM (NameMap Nat) := do
   match ← indexedPremisesFromServerRef.get with
-  | some names => return names
+  | some map => return map
   | none =>
-    let names ← core
-    indexedPremisesFromServerRef.set (some names)
-    return names
+    let map ← core
+    indexedPremisesFromServerRef.set (some map)
+    return map
 where
-  core : CoreM NameSet := do
+  core : CoreM (NameMap Nat) := do
     let names : Array String ← makeRequest "GET" "/indexed-premises" none
-    return names.foldl (fun ns n => ns.insert n.toName) ∅
+    return names.zipWithIndex.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
 
 /-- All modules known by the server. **NOTE** This is not used. -/
 def getIndexedModules : CoreM NameSet := do
@@ -85,19 +88,19 @@ def getIndexedModules : CoreM NameSet := do
   return moduleNames.foldl (fun ns n => ns.insert n.toName) ∅
 
 /-- A cache holding the premises imported from other modules that are indexed by the server. -/
-initialize indexedImportedPremisesRef : IO.Ref (Option (Array Name)) ← IO.mkRef none
+initialize indexedImportedPremisesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
 /-- A cache holding the premises imported from other modules that are not indexed by the server. -/
 initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise)) ← IO.mkRef none
 
 /-- Get imported premises, separated by whether they are indexed by the server. -/
-protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Name × Array Premise) := do
+protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × Array Premise) := do
   let env ← getEnv
   let maxUnindexedPremises ← getMaxUnindexedPremises
-  let indexedPremises ← getIndexedPremisesFromServer
+  let indexedPremisesFromServer ← getIndexedPremisesFromServer
   let moduleNames := env.header.moduleNames
   let moduleData := env.header.moduleData
 
-  let mut indexedNames := #[]
+  let mut indexedIdxs := #[]
   let mut unindexedNames := #[]
   for i in [0:moduleData.size] do
     let moduleName := moduleNames[i]!
@@ -105,8 +108,8 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Name × 
       continue
     let modData := moduleData[i]!
     for name in modData.constNames do
-      if indexedPremises.contains name then
-        indexedNames := indexedNames.push name
+      if let some idx := indexedPremisesFromServer.find? name then
+        indexedIdxs := indexedIdxs.push idx
       else
         unless Premise.isBlackListedPremise env name do
           unindexedNames := unindexedNames.push name
@@ -117,17 +120,17 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Name × 
   -- `useCache := false` because the `Premise`s are cached using our `unindexedImportedPremisesRef`
   let unindexedPremises ← Premise.fromNames unindexedNames chunkSize false
 
-  return (indexedNames, unindexedPremises)
+  return (indexedIdxs, unindexedPremises)
 
 /-- Get the imported premises that are indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted. -/
-def getIndexedImportedPremises (chunkSize := 256) : CoreM (Array Name) := do
+def getIndexedImportedPremises (chunkSize := 256) : CoreM (Array Nat) := do
   match ← indexedImportedPremisesRef.get with
-  | some names => return names
+  | some idxs => return idxs
   | none =>
-    let (names, _) ← Cloud.getImportedPremisesCore chunkSize
-    indexedImportedPremisesRef.set (some names)
-    return names
+    let (idxs, _) ← Cloud.getImportedPremisesCore chunkSize
+    indexedImportedPremisesRef.set (some idxs)
+    return idxs
 
 /-- Get the imported premises not indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted. -/
@@ -144,28 +147,27 @@ Modifications to these premises will *not* be reflected in the retrieval results
 the assumption being even if modifications are made, they should be small enough
 to significantly change the semantic meaning (the name is kept after all).
 -/
-def getIndexedLocalPremises : CoreM (Array Name) := do
+def getIndexedLocalPremises : CoreM (Array Nat) := do
   let env ← getEnv
-  let indexedPremises ← getIndexedPremisesFromServer
-  let mut names := #[]
+  let indexedPremisesFromServer ← getIndexedPremisesFromServer
+  let mut idxs := #[]
   for (name, _) in env.constants.map₂ do
-    if indexedPremises.contains name then
-      names := names.push name
-  return names
+    if let some idx := indexedPremisesFromServer.find? name then
+      idxs := idxs.push idx
+  return idxs
 
 /-- Returns the local premises defined in the current file that are not indexed by the server.
 The set of premises is not cached, to allow for adding/deleting local premises (unless indexed by the server).
 Currently, the printed signature itself is cached by the `Premise.fromName` function,
 meaning that it does not support modifying local premises,
-but (**TODO**) this behavior might (or should) change in the future either by disabling this cache
-or by making an option for users to purge cache.
+but (**TODO**) this behavior might (or should) change in the future by disabling this cache.
 -/
 def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let env ← getEnv
-  let indexedPremises ← getIndexedPremisesFromServer
+  let indexedPremisesFromServer ← getIndexedPremisesFromServer
   let mut names := #[]
   for (name, _) in env.constants.map₂ do
-    unless indexedPremises.contains name do
+    unless indexedPremisesFromServer.contains name do
       unless Premise.isBlackListedPremise env name do
         names := names.push name
   Premise.fromNames names chunkSize true -- **TODO** see docstring
@@ -177,10 +179,10 @@ def getUnindexedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   return premises₁ ++ premises₂
 
 /-- Returns indexed premises defined in the environment, from both imported and local premises. -/
-def getIndexedPremises (chunkSize := 256) : CoreM (Array Name) := do
-  let names₁ ← getIndexedImportedPremises chunkSize
-  let names₂ ← getIndexedLocalPremises
-  return names₁ ++ names₂
+def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do
+  let idxs₁ ← getIndexedImportedPremises chunkSize
+  let idxs₂ ← getIndexedLocalPremises
+  return idxs₁ ++ idxs₂
 
 elab "clear_premise_selection_cache" : command => do
   Premise.fromNameCacheRef.set ∅
@@ -205,7 +207,7 @@ scoped instance : ToMessageData Suggestion where
 initialize Lean.registerTraceClass `premiseSelection.debug
 
 def selectPremisesCore (state : String)
-    (importedModules indexedLocalPremises : Array Name) (unindexedPremises : Array Premise)
+    (importedModules : Array Name) (indexedLocalPremises : Array Nat) (unindexedPremises : Array Premise)
     (k : Nat) : CoreM (Array Suggestion) := do
   let data := Json.mkObj [
     ("state", .str state),
@@ -217,12 +219,13 @@ def selectPremisesCore (state : String)
   makeRequest "POST" "/retrieve" (some data)
 
 def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
-  let env ← getEnv
+  -- let env ← getEnv
   let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ Meta.ppGoal goal
   let state := state.pretty
   trace[premiseSelection.debug] m!"State: {state}"
 
-  let importedModules := env.allImportedModuleNames
+  -- let importedModules := env.allImportedModuleNames
+  let importedModules := #[]
   let indexedLocalPremises ← getIndexedLocalPremises
   let unindexedPremises ← getUnindexedPremises
 
