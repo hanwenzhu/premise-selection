@@ -155,6 +155,6 @@ set_premise_selector mepoSelector
 
 example (a b : Nat) : a + b = b + a := by
   suggest_premises
-  apply Nat.add_comm
+  simp_all_premises 16
 
 end MePo
