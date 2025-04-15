@@ -126,33 +126,9 @@ section MePo
 open MePo
 
 def mepoP := 0.6
-def mepoC := 2.4
-def mepoSelector : Selector := fun g config => do
-  let useRarity := true
-  let constants ← g.getConstants
-  let env ← getEnv
-  let score := if useRarity then
-    let frequency := MePo.symbolFrequency env
-    MePo.frequencyScore (frequency.findD · 0)
-  else
-    MePo.unweightedScore
-  let accept := fun ci => do
-    if let some moduleIdx := env.getModuleIdxFor? ci.name then
-      let moduleName := env.header.moduleNames[moduleIdx.toNat]!
-      if Premise.isBlackListedModule moduleName then
-        return false
-    if Premise.isBlackListedPremise env ci.name then
-      return false
-    return true
-  let suggestions ← MePo.mepo constants score accept (p := mepoP) (c := mepoC)
-  let suggestions := suggestions
-    |>.map (fun (n, s) => { name := n, score := s })
-    |>.reverse  -- some preliminary examples show the last added ones are better
-  match config.maxSuggestions with
-  | none => return suggestions
-  | some k => return suggestions.take k
+def mepoC := 0.9
 
-set_premise_selector mepoSelector
+set_premise_selector mepoSelector (useRarity := true) (p := mepoP) (c := mepoC)
 
 example (a b : Nat) : a + b = b + a := by
   suggest_premises
