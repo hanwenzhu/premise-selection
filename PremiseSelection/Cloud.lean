@@ -116,7 +116,7 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
 
   if unindexedNames.size > maxUnindexedPremises then
     logWarning m!"Found {unindexedNames.size} unindexed premises in imports, which exceeds the maximum number of new premises ({maxUnindexedPremises}). Discarding premises beyond this limit"
-    unindexedNames := unindexedNames.take maxUnindexedPremises
+    unindexedNames := unindexedNames.extract (unindexedNames.size - maxUnindexedPremises) unindexedNames.size
   -- `useCache := false` because the `Premise`s are cached using our `unindexedImportedPremisesRef`
   let unindexedPremises ← Premise.fromNames unindexedNames chunkSize false
 
@@ -172,11 +172,14 @@ def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
         names := names.push name
   Premise.fromNames names chunkSize true -- **TODO** see docstring
 
-/-- Returns new unindexed premises defined in the environment, from both imported and local premises. -/
+/-- Returns new unindexed premises defined in the environment, from both imported and local premises,
+truncated to the maximum number of unindexed premises allowed by the server. -/
 def getUnindexedPremises (chunkSize := 256) : CoreM (Array Premise) := do
+  let maxUnindexedPremises ← getMaxUnindexedPremises
   let premises₁ ← getUnindexedImportedPremises chunkSize
   let premises₂ ← getUnindexedLocalPremises chunkSize
-  return premises₁ ++ premises₂
+  let premises := premises₁ ++ premises₂
+  return premises.extract (premises.size - maxUnindexedPremises) premises.size
 
 /-- Returns indexed premises defined in the environment, from both imported and local premises. -/
 def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do

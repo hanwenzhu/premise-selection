@@ -168,8 +168,10 @@ def isBlackListedPremise (env : Environment) (name : Name) : Bool := Id.run do
   if name == ``sorryAx then return true
   if name.isInternalDetail then return true
   if nameBlackList.any (fun p => name.anyS (· == p)) then return true
-  -- let some moduleName := env.getModuleFor? name | return true
-  -- if moduleBlackList.any (fun p => moduleName.anyS (· == p)) then return true
+  if let some moduleIdx := env.getModuleIdxFor? name then
+    let moduleName := env.header.moduleNames[moduleIdx.toNat]!
+    if isBlackListedModule moduleName then
+      return true
   let some ci := env.find? name | return true
   if let .const fnName _ := ci.type.getForallBody.getAppFn then
     if typePrefixBlackList.any (fun p => p.isPrefixOf fnName) then return true
