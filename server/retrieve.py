@@ -13,7 +13,7 @@ import faiss
 
 from models import Corpus, PremiseSet, Premise
 
-MAX_NEW_PREMISES = 1024  # TODO tune this number
+MAX_NEW_PREMISES = 512  # TODO tune this number
 MINIBATCH_SIZE = 32 if torch.cuda.is_available() else 16  # batch size for encoding new premises (TODO tune this number)
 MAX_K = 1024
 
