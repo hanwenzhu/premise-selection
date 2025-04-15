@@ -80,7 +80,7 @@ def getIndexedPremisesFromServer : CoreM (NameMap Nat) := do
 where
   core : CoreM (NameMap Nat) := do
     let names : Array String ← makeRequest "GET" "/indexed-premises" none
-    return names.zipWithIndex.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
+    return names.zipIdx.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
 
 /-- All modules known by the server. **NOTE** This is not used. -/
 def getIndexedModules : CoreM NameSet := do
@@ -104,14 +104,14 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
   let mut unindexedNames := #[]
   for i in [0:moduleData.size] do
     let moduleName := moduleNames[i]!
-    if Premise.isBlackListedModule moduleName then
+    if isDeniedModule env moduleName then
       continue
     let modData := moduleData[i]!
     for name in modData.constNames do
       if let some idx := indexedPremisesFromServer.find? name then
         indexedIdxs := indexedIdxs.push idx
       else
-        unless Premise.isBlackListedPremise env name do
+        unless isDeniedPremise env name do
           unindexedNames := unindexedNames.push name
 
   if unindexedNames.size > maxUnindexedPremises then
@@ -168,7 +168,7 @@ def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let mut names := #[]
   for (name, _) in env.constants.map₂ do
     unless indexedPremisesFromServer.contains name do
-      unless Premise.isBlackListedPremise env name do
+      unless isDeniedPremise env name do
         names := names.push name
   Premise.fromNames names chunkSize true -- **TODO** see docstring
 

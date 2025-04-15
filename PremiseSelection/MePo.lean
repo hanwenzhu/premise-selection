@@ -1,11 +1,10 @@
+
 /-
 Copyright (c) 2025 Lean FRO, LLC. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Kim Morrison
-
-(Copied from the mepo branch of Lean.)
 -/
-import PremiseSelection.Basic
+import PremiseSelection.Premise
 import Lean.Util.FoldConsts
 import Lean.Meta.Basic
 
@@ -55,8 +54,7 @@ def frequencyScore (frequency : Name → Nat) (relevant candidate : NameSet) : F
 
 def unweightedScore (relevant candidate : NameSet) : Float := weightedScore (fun _ => 1) relevant candidate
 
--- The values of p := 0.6 and c := 2.4 are taken from the MePo paper, and need to be tuned.
-def mepo (initialRelevant : NameSet) (score : NameSet → NameSet → Float) (accept : ConstantInfo → CoreM Bool) (p : Float := 0.6) (c : Float := 2.4) : CoreM (Array (Name × Float)) := do
+def mepo (initialRelevant : NameSet) (score : NameSet → NameSet → Float) (accept : ConstantInfo → CoreM Bool) (p : Float) (c : Float) : CoreM (Array (Name × Float)) := do
   let env ← getEnv
   let mut p := p
   let mut candidates := #[]
@@ -70,6 +68,7 @@ def mepo (initialRelevant : NameSet) (score : NameSet → NameSet → Float) (ac
     if newAccepted.isEmpty then return accepted
     accepted := newAccepted.foldl (fun acc (n, _, s) => acc.push (n, s)) accepted
     candidates := candidates'.map fun (n, c, _) => (n, c)
+    relevant := newAccepted.foldl (fun acc (_, ns, _) => acc ++ ns) relevant
     p := p + (1 - p) / c
   return accepted
 
@@ -84,7 +83,9 @@ end MePo
 
 open MePo
 
-def mepo (useRarity : Bool) (g : MVarId) : MetaM (Array Suggestion) := do
+-- The values of p := 0.6 and c := 2.4 are taken from the MePo paper, and need to be tuned.
+-- When retrieving ≤32 premises for use by downstream automation, Thomas Zhu suggests that c := 0.5 is optimal.
+def mepoSelector (useRarity : Bool) (p : Float := 0.6) (c : Float := 2.4) : Selector := fun g config => do
   let constants ← g.getConstants
   let env ← getEnv
   let score := if useRarity then
@@ -92,6 +93,12 @@ def mepo (useRarity : Bool) (g : MVarId) : MetaM (Array Suggestion) := do
     frequencyScore (frequency.findD · 0)
   else
     unweightedScore
-  let accept := fun ci => return ! (`Lean).isPrefixOf ci.name && Lean.Meta.allowCompletion env ci.name
-  let suggestions ← MePo.mepo constants score accept
-  return suggestions.map fun (n, s) => { name := n, score := s }
+  let accept := fun ci => do
+    return ! isDeniedPremise env ci.name
+  let suggestions ← mepo constants score accept p c
+  let suggestions := suggestions
+    |>.map (fun (n, s) => { name := n, score := s })
+    |>.reverse  -- we favor constants that appear at the end of `env.constants`
+  match config.maxSuggestions with
+  | none => return suggestions
+  | some k => return suggestions.take k
