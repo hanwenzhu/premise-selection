@@ -26,7 +26,7 @@ def retrieve():
         k = MAX_K
         # return jsonify({"error": f"value of k ({k}) exceeds maximum ({MAX_K})"})
     if new_premises is not None and len(new_premises) > MAX_NEW_PREMISES:
-        new_premises = new_premises[:MAX_K]
+        new_premises = new_premises[:MAX_NEW_PREMISES]
         # return jsonify({"error": f"{len(new_premises)} new premises uploaded, exceeding maximum ({MAX_NEW_PREMISES})"}), 400
 
     premises = retrieve_premises(state, imported_modules, local_premises, new_premises, k=k)
