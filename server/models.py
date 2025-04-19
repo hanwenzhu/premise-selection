@@ -204,15 +204,22 @@ def read_ntp_toolkit(
     data_dir: str,
 ) -> Iterator[Tuple[str, int, Dict[str, Any]]]:
     """Internal method that reads .jsonl files from ntp-toolkit"""
+    decode_errors = []
     for json_file in tqdm.tqdm(sorted(os.listdir(data_dir))):
         if json_file.endswith(".jsonl"):
             module = json_file.removesuffix(".jsonl")
             with open(os.path.join(data_dir, json_file)) as f:
-                for i, line in enumerate(f):
-                    # # Temporary fix for a version of ntp-toolkit, can remove
-                    # line = re.sub(r"^\S+ data:\s*", "", line)
-                    info_dict = json.loads(line)
-                    yield (module, i, info_dict)
+                try:
+                    for i, line in enumerate(f):
+                        # # Temporary fix for a version of ntp-toolkit, can remove
+                        # line = re.sub(r"^\S+ data:\s*", "", line)
+                        info_dict = json.loads(line)
+                        yield (module, i, info_dict)
+                # Malformed data has very small probability and we ignore them
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    decode_errors.append(json_file)
+    if decode_errors:
+        print(f"Could not read some data from {[os.path.join(data_dir, json_file) for json_file in decode_errors]}")
 
 def read_ntp_toolkit_modules(
     data_dir: str

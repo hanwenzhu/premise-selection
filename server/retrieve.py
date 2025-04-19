@@ -2,14 +2,16 @@
 # Notebook version: see retrieve.ipynb on Colab
 # RAM: 4.8 GB on Colab
 
+from collections import OrderedDict
 import os
-from typing import Optional, List, Dict, Union
+from typing import Optional, List, Dict, Union, Literal
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
 import torch
 from huggingface_hub import hf_hub_download
 import faiss
+from pydantic import BaseModel
 
 from models import Corpus, PremiseSet, Premise
 
@@ -18,6 +20,7 @@ MINIBATCH_SIZE = 32 if torch.cuda.is_available() else 16  # batch size for encod
 MAX_K = 1024
 
 model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-mar17")
+embedding_precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32"
 
 # Get corpus of premises, including their names and serialized expressions
 file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_416.tar.gz", revision="main")
@@ -37,45 +40,100 @@ corpus_embeddings = np.load(file_path)
 #     convert_to_tensor=True,
 # )
 
-assert corpus_embeddings.shape[0] == len(corpus.premises)
+assert corpus_embeddings.shape == (len(corpus.premises), model.get_sentence_embedding_dimension())
 
 # Build index to search from using FAISS
 index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
 index.add(corpus_embeddings)  # type: ignore
 
 
-def retrieve_premises_core(states: Union[str, List[str]], k=8, new_premises: Optional[List[Dict[str, str]]] = None, **kwargs):
+# Classes for retrieval API
+class NewPremise(BaseModel):
+    name: str
+    decl: str
+
+class RetrievalRequest(BaseModel):
+    state: str  # str | List[str] is technically possible
+    imported_modules: List[str]
+    local_premises: List[str | int]
+    new_premises: List[NewPremise]
+    k: int
+
+
+class LRUCache:
+    def __init__(self, maxsize: int):
+        self.cache = OrderedDict()
+        self.maxsize = maxsize
+
+    def __getitem__(self, key: str) -> np.ndarray:
+        self.cache.move_to_end(key)
+        return self.cache[key]
+
+    def __setitem__(self, key: str, value: np.ndarray):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.maxsize:
+            self.cache.popitem(last=False)
+
+    def __contains__(self, key: str):
+        return key in self.cache
+
+    def __len__(self):
+        return len(self.cache)
+
+embedding_cache = LRUCache(maxsize=32768)  # 32768 items * 768 dimensions * float32 = 192 MB
+
+def embed(states: List[str], premises: List[str]):
+    if not states:
+        raise ValueError("Empty list of states")
+    premises_to_embed = []
+    premise_embeddings = np.empty((len(premises), corpus_embeddings.shape[1]), dtype=embedding_precision)
+    for i, premise in enumerate(premises):
+        if premise in embedding_cache:
+            premise_embeddings[i] = embedding_cache[premise]
+        else:
+            premises_to_embed.append((i, premise))
+    packed_embeddings = model.encode(
+        states + [text for _, text in premises_to_embed],
+        batch_size=MINIBATCH_SIZE,
+        precision=embedding_precision
+    )
+    state_embeddings = packed_embeddings[:len(states)]
+    computed_premise_embeddings = packed_embeddings[len(states):]
+    for (i, premise), embedding in zip(premises_to_embed, computed_premise_embeddings):
+        embedding_cache[premise] = embedding
+        premise_embeddings[i] = embedding
+    return state_embeddings, premise_embeddings
+
+
+def retrieve_premises_core(states: Union[str, List[str]], k: int, new_premises: List[NewPremise], **kwargs):
     if isinstance(states, str):
         return_list = False
         states = [states]
     else:
         return_list = True
 
+    # Embed states and new premises
+    new_premise_decls = [premise_data.decl for premise_data in new_premises]
+    state_embeddings, new_premise_embeddings = embed(states, new_premise_decls)
+
     # Retrieve premises from indexed premises
-    state_embeddings = model.encode(states, batch_size=MINIBATCH_SIZE)
     scoress, indicess = index.search(state_embeddings, k, **kwargs)  # type: ignore
     scored_indexed_premises = [
         [
-            # TODO: remove `"premise"` here
             # TODO: make this a class
-            {"score": score.item(), "name": corpus.premises[i].name, "decl": corpus.premises[i].to_string()}
+            {"score": score.item(), "name": corpus.premises[i].name}
             for score, i in zip(scores, indices)
         ]
         for scores, indices in zip(scoress, indicess)
     ]
 
-    # Embed and rank new user-defined premises
-    if not new_premises:
-        new_premises = []
-        # new_premise_embeddings = torch.zeros(0, state_embeddings.shape[1]).to(state_embeddings)
-        new_premise_embeddings = np.zeros((0, state_embeddings.shape[1]), dtype=state_embeddings.dtype)
-    else:
-        new_premise_embeddings = model.encode([premise_data["decl"] for premise_data in new_premises], batch_size=MINIBATCH_SIZE)
+    # Rank new premises
     new_scoress = model.similarity(state_embeddings, new_premise_embeddings)
     scored_new_premises = [
         [
-            # TODO: remove `"premise"` here
-            {"score": score.item(), "name": premise_data["name"], "decl": premise_data["decl"]}
+            {"score": score.item(), "name": premise_data.name}
             for score, premise_data in zip(scores, new_premises)
         ]
         for scores in new_scoress
@@ -96,7 +154,7 @@ def retrieve_premises(
     states: Union[str, List[str]],
     imported_modules: List[str],
     local_premises: List[str | int],
-    new_premises: List[Dict[str, str]],
+    new_premises: List[NewPremise],
     k: int
 ):
     """Retrieve premises from all indexed premises in:
@@ -130,7 +188,7 @@ def retrieve_premises(
 
     # Remove user-uploaded new premises from accessible set, because they override the server-side signature
     for premise_data in new_premises:
-        name = premise_data["name"]
+        name = premise_data.name
         if name in corpus.name2premise:
             premise = corpus.name2premise[name]
             # User-uploaded premise overrides server-side premise
