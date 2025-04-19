@@ -5,6 +5,7 @@
 from collections import OrderedDict
 import os
 from typing import Optional, List, Dict, Union, Literal
+import tarfile
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -15,6 +16,7 @@ from pydantic import BaseModel
 
 from models import Corpus, PremiseSet, Premise
 
+DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
 MAX_NEW_PREMISES = 256  # TODO tune this number
 MINIBATCH_SIZE = 32 if torch.cuda.is_available() else 16  # batch size for encoding new premises (TODO tune this number)
 MAX_K = 1024
@@ -25,8 +27,9 @@ embedding_precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = 
 # Get corpus of premises, including their names and serialized expressions
 file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_416.tar.gz", revision="main")
 print(f"Mathlib declarations data saved to {file_path}")
-# !tar -xf {file_path}
-ntp_toolkit_mathlib_path = "./Mathlib"
+with tarfile.open(file_path, "r:gz") as tar:
+    tar.extractall(DATA_DIR)
+ntp_toolkit_mathlib_path = os.path.join(DATA_DIR, "Mathlib")
 corpus = Corpus.from_ntp_toolkit(ntp_toolkit_mathlib_path)
 
 # Get corpus embeddings

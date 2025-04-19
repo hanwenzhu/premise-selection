@@ -116,7 +116,7 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
 
   if unindexedNames.size > maxUnindexedPremises then
     logWarning m!"Found {unindexedNames.size} unindexed premises in imports, which exceeds the maximum number of new premises ({maxUnindexedPremises}). Discarding premises beyond this limit"
-    unindexedNames := unindexedNames.extract (unindexedNames.size - maxUnindexedPremises) unindexedNames.size
+    unindexedNames := unindexedNames.extract (unindexedNames.size - maxUnindexedPremises)
   -- `useCache := false` because the `Premise`s are cached using our `unindexedImportedPremisesRef`
   let unindexedPremises ← Premise.fromNames unindexedNames chunkSize false
 
@@ -178,7 +178,11 @@ def getUnindexedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let maxUnindexedPremises ← getMaxUnindexedPremises
   let premises₁ ← getUnindexedImportedPremises chunkSize
   let premises₂ ← getUnindexedLocalPremises chunkSize
-  let premises := premises₁ ++ premises₂
+  let mut premises := premises₁ ++ premises₂
+  if premises.size > maxUnindexedPremises then
+    -- This log message is not accurate because premises₁ is already truncated
+    -- logWarning m!"Found {premises.size} unindexed premises in the environment, which exceeds the maximum number of new premises ({maxUnindexedPremises}). Discarding premises beyond this limit"
+    premises := premises.extract (premises.size - maxUnindexedPremises)
   return premises.extract (premises.size - maxUnindexedPremises) premises.size
 
 /-- Returns indexed premises defined in the environment, from both imported and local premises. -/
@@ -187,7 +191,12 @@ def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do
   let idxs₂ ← getIndexedLocalPremises
   return idxs₁ ++ idxs₂
 
-elab "clear_premise_selection_cache" : command => do
+elab "set_premise_selection_cloud_cache" : command => do
+  Elab.Command.liftCoreM do
+    let _ ← getUnindexedPremises
+    let _ ← getIndexedPremises
+
+elab "clear_premise_selection_cloud_cache" : command => do
   Premise.fromNameCacheRef.set ∅
   indexedPremisesFromServerRef.set none
   indexedImportedPremisesRef.set none

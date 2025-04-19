@@ -20,6 +20,31 @@ section Profiling
 
 set_option profiler true
 
+section ClientSideCache
+
+#time  -- populate cache for premises to send to server
+set_premise_selection_cloud_cache
+
+#time  -- second call to cache; should be fast
+set_premise_selection_cloud_cache
+
+end ClientSideCache
+
+section ServerSideCache
+
+#time  -- first server call
+example : True := by
+  suggest_premises
+  trivial
+
+#time  -- second server call (to test server-side caching; need a freshly started server)
+example : True := by
+  suggest_premises
+  trivial
+
+end ServerSideCache
+
+#time
 example (a b : Nat) : a + b = b + a := by
   suggest_premises
   apply Nat.add_comm
@@ -34,23 +59,29 @@ example (a b : Nat) : a + b = b + a := by
   selectPremisesCore "a b : Nat
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[] #[← Premise.fromName ``Nat.add.comm false] 2
 
-end Profiling
-
 set_option trace.premiseSelection.debug true
 
 elab "simp_all_premises" k:num : tactic => do
   let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions := k.getNat }
   let simpLemmas : Array (TSyntax `Lean.Parser.Tactic.simpLemma) ←
     suggestions.mapM fun suggestion => do
-      let name := ⟨(mkIdent suggestion.name).raw⟩
+      let name := mkIdent suggestion.name
       `(Lean.Parser.Tactic.simpLemma| $name:term)
   Elab.Tactic.evalTactic (← `(tactic| simp_all [$simpLemmas,*]))
 
+#time
 example (a b : Nat) : a + b = b + a := by
   simp_all_premises 16
 
+#time
 example (a b : Nat) : a + (b + 1) = (a + b) + 1 := by
   simp_all_premises 16
+
+#time
+example (a b : Nat) : a + (b + 1) = (a + b) + 1 := by
+  simp_all_premises 16
+
+end Profiling
 
 end Cloud
 
@@ -109,9 +140,10 @@ end Generated
   assert! 1000 <= premises.size && premises.size < 2000
   return premises
 
--- This might make the server OOM
--- example : 4882 = 4882 := by
---   suggest_premises
+-- This makes the server OOM if not for maxUnindexedPremises
+example : 4882 = 4882 := by
+  suggest_premises
+  rfl
 
 -- Stress test
 -- #eval show MetaM _ from do

@@ -1,3 +1,4 @@
 .DS_Store
 /.lake
 __pycache__
+/server/data
