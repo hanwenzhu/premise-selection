@@ -6,7 +6,7 @@ from collections import OrderedDict
 import logging
 import os
 import tarfile
-from typing import Optional, List, Dict, Union, Literal
+from typing import Optional, List, Dict, Union, Literal, Set
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -24,10 +24,12 @@ MAX_K = 1024
 
 logger = logging.getLogger(__name__)
 
+# TODO: hardcoded
 model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-mar17")
 embedding_precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32"
 
 # Get corpus of premises, including their names and serialized expressions
+# TODO: hardcoded
 file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_416.tar.gz", revision="main")
 logger.info(f"Mathlib declarations data saved to {file_path}")
 with tarfile.open(file_path, "r:gz") as tar:
@@ -38,7 +40,12 @@ corpus = Corpus.from_ntp_toolkit(ntp_toolkit_mathlib_path)
 # Build index from corpus embeddings
 def build_index(use_hub_embeddings=True) -> faiss.Index:
     if use_hub_embeddings:
-        file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_416.npy", revision="main")
+        # TODO: hardcoded
+        file_path = hf_hub_download(
+            repo_id="hanwenzhu/wip-lean-embeddings",
+            filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_416.npy",
+            revision="main"
+        )
         corpus_embeddings = np.load(file_path)
     else:
         corpus_embeddings = model.encode(
@@ -55,9 +62,12 @@ def build_index(use_hub_embeddings=True) -> faiss.Index:
     # Build index to search from using FAISS
     index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
     if faiss.get_num_gpus() > 0:
+        logger.info("Using FAISS on GPU")
         res = faiss.StandardGpuResources()  # type: ignore
         gpu_idx = 0  # TODO
         index = faiss.index_cpu_to_gpu(res, gpu_idx, index)  # type: ignore
+    else:
+        logger.info("Using FAISS on CPU")
     index.add(corpus_embeddings)  # type: ignore
 
     return index
@@ -72,7 +82,6 @@ class NewPremise(BaseModel):
 
 class RetrievalRequest(BaseModel):
     state: str  # str | List[str] is technically possible
-    imported_modules: List[str]
     local_premises: List[str | int]
     new_premises: List[NewPremise]
     k: int
@@ -170,13 +179,12 @@ def retrieve_premises_core(states: Union[str, List[str]], k: int, new_premises: 
 
 def retrieve_premises(
     states: Union[str, List[str]],
-    imported_modules: List[str],
     local_premises: List[str | int],
     new_premises: List[NewPremise],
     k: int
 ):
     """Retrieve premises from all indexed premises in:
-    imported modules + indexed premises in local_premises + unindexed premises in new_premises.
+    indexed premises in local_premises + unindexed premises in new_premises.
 
     In case of duplicate names, the signature in `new_premises` overrides the signature indexed on the server.
     """
@@ -184,10 +192,7 @@ def retrieve_premises(
         raise ValueError(f"value of k ({k}) exceeds maximum ({MAX_K})")
 
     # Accessible premises from the state, starting from imported modules
-    accessible_premises = PremiseSet(corpus, set(imported_modules))
-    # (NOTE: corpus.accessible_premises is currently not used by the server
-    #  which should be taken into account in a future refactor
-    #  accessible_premises = corpus.accessible_premises(module, line, column))
+    accessible_premises: Set[str] = set()
 
     if len(new_premises) > MAX_NEW_PREMISES:
         raise ValueError(f"{len(new_premises)} new premises uploaded, exceeding maximum ({MAX_NEW_PREMISES})")
@@ -199,8 +204,7 @@ def retrieve_premises(
         if isinstance(name, int) and 0 <= name < len(corpus.unfiltered_premises):
             name = corpus.unfiltered_premises[name].name
         if name in corpus.name2premise:
-            premise = corpus.name2premise[name]
-            accessible_premises.add(premise)
+            accessible_premises.add(name)
         else:
             continue  # not raising an error, because the supplied local premises are unfiltered, so might not be in corpus
 
@@ -208,13 +212,14 @@ def retrieve_premises(
     for premise_data in new_premises:
         name = premise_data.name
         if name in corpus.name2premise:
-            premise = corpus.name2premise[name]
             # User-uploaded premise overrides server-side premise
-            accessible_premises.remove(premise)
+            accessible_premises.remove(name)
 
-    sel = faiss.PyCallbackIDSelector(lambda i: corpus.premises[i] in accessible_premises)
+    accessible_premise_idxs = [corpus.name2idx[name] for name in accessible_premises]
+    # NOTE: the types of faiss Selector, SearchParameters, and Index should align
+    sel = faiss.IDSelectorArray(accessible_premise_idxs)  # type: ignore
     kwargs = {}
-    kwargs["params"] = faiss.SearchParametersHNSW(sel=sel)  # type: ignore
+    kwargs["params"] = faiss.SearchParameters(sel=sel)  # type: ignore
 
     return retrieve_premises_core(states, k, new_premises, **kwargs)
 

@@ -15,6 +15,8 @@ theorem add_comm (a b : Nat) : a + b = b + a := Nat.add_comm ..
 theorem Nat.add.comm (a b : Nat) : a + b = b + a := Nat.add_comm ..
 
 set_premise_selector premiseSelector
+set_option premiseSelection.apiBaseUrl "http://18.218.57.199"
+set_option premiseSelection.apiBaseUrl "http://127.0.0.1:5000"
 
 section Profiling
 

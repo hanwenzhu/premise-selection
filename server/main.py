@@ -18,7 +18,6 @@ def retrieve(request: RetrievalRequest):
 
     premises = retrieve_premises(
         states=request.state,
-        imported_modules=request.imported_modules,
         local_premises=request.local_premises,
         new_premises=request.new_premises,
         k=request.k

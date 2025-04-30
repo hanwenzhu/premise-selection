@@ -219,11 +219,10 @@ scoped instance : ToMessageData Suggestion where
 initialize Lean.registerTraceClass `premiseSelection.debug
 
 def selectPremisesCore (state : String)
-    (importedModules : Array Name) (indexedPremises : Array Nat) (unindexedPremises : Array Premise)
+    (indexedPremises : Array Nat) (unindexedPremises : Array Premise)
     (k : Nat) : CoreM (Array Suggestion) := do
   let data := Json.mkObj [
     ("state", .str state),
-    ("imported_modules", toJson importedModules),
     ("local_premises", toJson indexedPremises),  -- the name `local_premises` is an artifact from previous versions
     ("new_premises", toJson unindexedPremises),
     ("k", .num (.fromNat k)),
@@ -236,13 +235,11 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   let state := state.pretty
   trace[premiseSelection.debug] m!"State: {state}"
 
-  -- let importedModules := env.allImportedModuleNames
-  let importedModules := #[]
   let indexedPremises ← getIndexedPremises
   let unindexedPremises ← getUnindexedPremises
 
   let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do
-    selectPremisesCore state importedModules indexedPremises unindexedPremises k
+    selectPremisesCore state indexedPremises unindexedPremises k
 
   trace[premiseSelection.debug] m!"Suggestions: {suggestions}"
   return suggestions

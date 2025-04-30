@@ -6,7 +6,6 @@ Install the following Python dependencies:
 * `torch` (CPU/GPU)
 * `faiss` (CPU/GPU)
 * `huggingface_hub`
-* `pydantic`
 
 (For GPU, I recommend `conda install pytorch::faiss-gpu conda-forge::pytorch-gpu` as of April 2025 because `pytorch::pytorch` is discontinued while `conda-forge::faiss-gpu` did not work for me.)
 

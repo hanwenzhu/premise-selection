@@ -354,6 +354,8 @@ class Corpus:
         """A mapping from module name to premises inside module"""
         self.name2premise: Dict[str, Premise] = {}
         """Maps from premise name to `Premise`"""
+        self.name2idx: Dict[str, int] = {}
+        """Maps from premise name to index in `self.premises`"""
         self.unfiltered_premises: List[Premise] = premises
         """The given list of premises during initialization before filtering to `self.premises`"""
         self.unfiltered_names: List[str] = [premise.name for premise in premises]
@@ -374,6 +376,7 @@ class Corpus:
             if premise.name in self.name2premise:
                 # This happens in very rare cases; e.g. Subtype.ext_val_iff
                 continue
+            self.name2idx[premise.name] = len(self.premises)
             self.premises.append(premise)
             self.module_to_premises[premise.module].append(premise.name)
             self.name2premise[premise.name] = premise
@@ -384,6 +387,7 @@ class Corpus:
         """Names of all modules"""
 
     def add_premise(self, premise: Premise):
+        self.name2idx[premise.name] = len(self.premises)
         self.premises.append(premise)
         self.module_to_premises.setdefault(premise.module, []).append(premise.name)
         self.name2premise[premise.name] = premise
