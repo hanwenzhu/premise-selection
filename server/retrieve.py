@@ -61,13 +61,14 @@ def build_index(use_hub_embeddings=True) -> faiss.Index:
 
     # Build index to search from using FAISS
     index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
-    if faiss.get_num_gpus() > 0:
-        logger.info("Using FAISS on GPU")
-        res = faiss.StandardGpuResources()  # type: ignore
-        gpu_idx = 0  # TODO
-        index = faiss.index_cpu_to_gpu(res, gpu_idx, index)  # type: ignore
-    else:
-        logger.info("Using FAISS on CPU")
+    # NOTE: see README
+    # if faiss.get_num_gpus() > 0:
+    #     logger.info("Using FAISS on GPU")
+    #     res = faiss.StandardGpuResources()  # type: ignore
+    #     gpu_idx = 0  # TODO
+    #     index = faiss.index_cpu_to_gpu(res, gpu_idx, index)  # type: ignore
+    # else:
+    logger.info("Using FAISS on CPU")
     index.add(corpus_embeddings)  # type: ignore
 
     return index
@@ -152,6 +153,7 @@ def retrieve_premises_core(states: Union[str, List[str]], k: int, new_premises: 
             # TODO: make this a class
             {"score": score.item(), "name": corpus.premises[i].name}
             for score, i in zip(scores, indices)
+            if i >= 0  # FAISS returns -1 with `sel`
         ]
         for scores, indices in zip(scoress, indicess)
     ]
