@@ -136,18 +136,18 @@ end PrettyPrinting
 
 /-! **TODO**: use the implementation of deny-list in https://github.com/leanprover/lean4/tree/mepo instead (once the branch is merged) -/
 
-run_cmd do
+run_cmd
   for module in #[
     "Aesop", "Auto", "Cli", "CodeAction", "DocGen4", "Duper", "ImportGraph", "Lake", "Lean", "LeanSearchClient", "Linter", "Mathport",
     "MD4Lean", "Plausible", "ProofWidgets", "Qq", "QuerySMT", "Tactic", "TacticExtra", "Test", "Testing", "UnicodeBasic", "Util"
   ] do
     modifyEnv fun env => moduleDenyListExt.addEntry env module
 
-run_cmd do
+run_cmd
   for name in #["Lean", "Lake", "Qq"] do
     modifyEnv fun env => nameDenyListExt.addEntry env name
 
-run_cmd do
+run_cmd
   for typePrefix in #[`Lean] do
     modifyEnv fun env => typePrefixDenyListExt.addEntry env typePrefix
 

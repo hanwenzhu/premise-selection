@@ -3,12 +3,12 @@
 Install the following Python dependencies:
 * `fastapi[standard]`
 * `sentence-transformers`
-* `torch` (CPU)
-* `faiss` (CPU)
+* `torch` (CPU/GPU)
+* `faiss` (CPU/GPU)
 * `huggingface_hub`
 * `pydantic`
 
-TODO: GPU is not supported yet.
+(For GPU, I recommend `conda install pytorch::faiss-gpu conda-forge::pytorch-gpu` as of April 2025 because `pytorch::pytorch` is discontinued while `conda-forge::faiss-gpu` did not work for me.)
 
 ## Deployment
 

@@ -3,9 +3,10 @@
 # RAM: 4.8 GB on Colab
 
 from collections import OrderedDict
+import logging
 import os
-from typing import Optional, List, Dict, Union, Literal
 import tarfile
+from typing import Optional, List, Dict, Union, Literal
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -21,33 +22,47 @@ MAX_NEW_PREMISES = 256  # TODO tune this number
 MINIBATCH_SIZE = 32 if torch.cuda.is_available() else 16  # batch size for encoding new premises (TODO tune this number)
 MAX_K = 1024
 
+logger = logging.getLogger(__name__)
+
 model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-mar17")
 embedding_precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32"
 
 # Get corpus of premises, including their names and serialized expressions
 file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_416.tar.gz", revision="main")
-print(f"Mathlib declarations data saved to {file_path}")
+logger.info(f"Mathlib declarations data saved to {file_path}")
 with tarfile.open(file_path, "r:gz") as tar:
     tar.extractall(DATA_DIR)
 ntp_toolkit_mathlib_path = os.path.join(DATA_DIR, "Mathlib")
 corpus = Corpus.from_ntp_toolkit(ntp_toolkit_mathlib_path)
 
-# Get corpus embeddings
-file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_416.npy", revision="main")
-corpus_embeddings = np.load(file_path)
-# Note that these embeddings were generated using the following (takes too long on a CPU):
-# corpus_embeddings = model.encode(
-#     [premise.to_string() for premise in corpus_premises],
-#     show_progress_bar=True,
-#     batch_size=32,
-#     convert_to_tensor=True,
-# )
+# Build index from corpus embeddings
+def build_index(use_hub_embeddings=True) -> faiss.Index:
+    if use_hub_embeddings:
+        file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_416.npy", revision="main")
+        corpus_embeddings = np.load(file_path)
+    else:
+        corpus_embeddings = model.encode(
+            [premise.to_string() for premise in corpus.premises],
+            show_progress_bar=True,
+            batch_size=32,
+            convert_to_tensor=True,
+        )
+    assert corpus_embeddings.shape == (
+        len(corpus.premises),
+        model.get_sentence_embedding_dimension()
+    )
 
-assert corpus_embeddings.shape == (len(corpus.premises), model.get_sentence_embedding_dimension())
+    # Build index to search from using FAISS
+    index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
+    if faiss.get_num_gpus() > 0:
+        res = faiss.StandardGpuResources()  # type: ignore
+        gpu_idx = 0  # TODO
+        index = faiss.index_cpu_to_gpu(res, gpu_idx, index)  # type: ignore
+    index.add(corpus_embeddings)  # type: ignore
 
-# Build index to search from using FAISS
-index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
-index.add(corpus_embeddings)  # type: ignore
+    return index
+
+index = build_index()  # wrapping in a function for garbage collection
 
 
 # Classes for retrieval API
@@ -65,7 +80,7 @@ class RetrievalRequest(BaseModel):
 
 class LRUCache:
     def __init__(self, maxsize: int):
-        self.cache = OrderedDict()
+        self.cache: OrderedDict[str, np.ndarray] = OrderedDict()
         self.maxsize = maxsize
 
     def __getitem__(self, key: str) -> np.ndarray:
@@ -91,7 +106,7 @@ def embed(states: List[str], premises: List[str]):
     if not states:
         raise ValueError("Empty list of states")
     premises_to_embed = []
-    premise_embeddings = np.empty((len(premises), corpus_embeddings.shape[1]), dtype=embedding_precision)
+    premise_embeddings = np.empty((len(premises), index.d), dtype=embedding_precision)
     for i, premise in enumerate(premises):
         if premise in embedding_cache:
             premise_embeddings[i] = embedding_cache[premise]

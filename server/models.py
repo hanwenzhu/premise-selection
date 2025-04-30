@@ -5,10 +5,14 @@ from typing import Dict, Any, List, Optional, Tuple, Type, Literal, Iterator, Se
 import json
 import os
 import re
+import logging
 
 import tqdm
 import numpy as np
 import torch
+
+
+logger = logging.getLogger(__name__)
 
 
 SimpAllHint = Literal[
@@ -219,7 +223,7 @@ def read_ntp_toolkit(
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     decode_errors.append(json_file)
     if decode_errors:
-        print(f"Could not read some data from {[os.path.join(data_dir, json_file) for json_file in decode_errors]}")
+        logger.warning(f"Could not read some data from {[os.path.join(data_dir, json_file) for json_file in decode_errors]}")
 
 def read_ntp_toolkit_modules(
     data_dir: str
@@ -352,6 +356,8 @@ class Corpus:
         """Maps from premise name to `Premise`"""
         self.unfiltered_premises: List[Premise] = premises
         """The given list of premises during initialization before filtering to `self.premises`"""
+        self.unfiltered_names: List[str] = [premise.name for premise in premises]
+        """The names of the given list of premises during initialization before filtering to `self.premises`"""
 
         for premise in premises:
             if filter:
