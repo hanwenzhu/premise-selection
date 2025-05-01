@@ -19,8 +19,15 @@ from models import Corpus, PremiseSet, Premise
 
 GPU_AVAILABLE = torch.cuda.is_available()
 DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
-MAX_NEW_PREMISES = 2048 if GPU_AVAILABLE else 256  # TODO tune this number
-MINIBATCH_SIZE = 32 if GPU_AVAILABLE else 16  # batch size for encoding new premises (TODO tune this number)
+# TODO tune this number
+# (Thomas) Especially with the LRU cache, I think the primary bottleneck
+# for increasing this number is on the user side:
+# the time it takes to pretty-print all the new statements.
+# For 2048, this is ~4 seconds
+MAX_NEW_PREMISES = 2048 if GPU_AVAILABLE else 256
+# TODO tune this number
+# Batch size for encoding new premises
+MINIBATCH_SIZE = 32 if GPU_AVAILABLE else 16
 MAX_K = 1024
 
 logger = logging.getLogger(__name__)
