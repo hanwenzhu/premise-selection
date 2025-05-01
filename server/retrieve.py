@@ -91,6 +91,7 @@ class NewPremise(BaseModel):
 
 class RetrievalRequest(BaseModel):
     state: str  # str | List[str] is technically possible
+    imported_modules: Optional[List[str]] = None  # Legacy support, TODO remove
     local_premises: List[str | int]
     new_premises: List[NewPremise]
     k: int
@@ -189,6 +190,7 @@ def retrieve_premises_core(states: Union[str, List[str]], k: int, new_premises: 
 
 def retrieve_premises(
     states: Union[str, List[str]],
+    imported_modules: Optional[List[str]],
     local_premises: List[str | int],
     new_premises: List[NewPremise],
     k: int
@@ -203,6 +205,12 @@ def retrieve_premises(
 
     # Accessible premises from the state, starting from imported modules
     accessible_premises: Set[str] = set()
+
+    # Legacy support, TODO remove
+    if imported_modules is not None:
+        for premise in corpus.premises:
+            if premise.module in imported_modules:
+                accessible_premises.add(premise.name)
 
     if len(new_premises) > MAX_NEW_PREMISES:
         raise ValueError(f"{len(new_premises)} new premises uploaded, exceeding maximum ({MAX_NEW_PREMISES})")
