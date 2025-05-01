@@ -208,8 +208,9 @@ def retrieve_premises(
 
     # Legacy support, TODO remove
     if imported_modules is not None:
+        imported_modules_set = set(imported_modules)
         for premise in corpus.premises:
-            if premise.module in imported_modules:
+            if premise.module in imported_modules_set:
                 accessible_premises.add(premise.name)
 
     if len(new_premises) > MAX_NEW_PREMISES:
