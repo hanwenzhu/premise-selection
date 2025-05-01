@@ -17,9 +17,10 @@ from pydantic import BaseModel
 
 from models import Corpus, PremiseSet, Premise
 
+GPU_AVAILABLE = torch.cuda.is_available()
 DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
-MAX_NEW_PREMISES = 256  # TODO tune this number
-MINIBATCH_SIZE = 32 if torch.cuda.is_available() else 16  # batch size for encoding new premises (TODO tune this number)
+MAX_NEW_PREMISES = 2048 if GPU_AVAILABLE else 256  # TODO tune this number
+MINIBATCH_SIZE = 32 if GPU_AVAILABLE else 16  # batch size for encoding new premises (TODO tune this number)
 MAX_K = 1024
 
 logger = logging.getLogger(__name__)
