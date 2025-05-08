@@ -5,6 +5,7 @@
 from collections import OrderedDict
 import logging
 import os
+import shutil
 import tarfile
 from typing import Optional, List, Dict, Union, Literal, Set
 
@@ -33,14 +34,18 @@ MAX_K = 1024
 logger = logging.getLogger(__name__)
 
 # TODO: hardcoded
-model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-mar17")
+model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-may07")
 embedding_precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32"
 
 # Get corpus of premises, including their names and serialized expressions
 # TODO: hardcoded
-file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_416.tar.gz", revision="main")
+file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_418.tar.gz", revision="main")
 logger.info(f"Mathlib declarations data saved to {file_path}")
+if os.path.isdir(DATA_DIR):
+    logger.info(f"Removing Mathlib declarations data at {DATA_DIR}")
+    shutil.rmtree(DATA_DIR)
 with tarfile.open(file_path, "r:gz") as tar:
+    logger.info(f"Extracting Mathlib declarations data to {DATA_DIR}")
     tar.extractall(DATA_DIR)
 ntp_toolkit_mathlib_path = os.path.join(DATA_DIR, "Mathlib")
 corpus = Corpus.from_ntp_toolkit(ntp_toolkit_mathlib_path)

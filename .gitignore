@@ -2,6 +2,8 @@
 
 # Premise selection data cache
 /server/data
+# Premise selection stress test
+/server/stress_test.py
 
 # Lean
 /.lake
