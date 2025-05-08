@@ -51,7 +51,7 @@ def build_index(use_hub_embeddings=True) -> faiss.Index:
         # TODO: hardcoded
         file_path = hf_hub_download(
             repo_id="hanwenzhu/wip-lean-embeddings",
-            filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_416.npy",
+            filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_418.npy",
             revision="main"
         )
         corpus_embeddings = np.load(file_path)
