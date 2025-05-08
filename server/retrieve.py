@@ -20,6 +20,7 @@ from models import Corpus, PremiseSet, Premise
 
 GPU_AVAILABLE = torch.cuda.is_available()
 DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
+MATHLIB_DIR = os.path.join(DATA_DIR, "Mathlib")
 # TODO tune this number
 # (Thomas) Especially with the LRU cache, I think the primary bottleneck
 # for increasing this number is on the user side:
@@ -38,17 +39,11 @@ model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-m
 embedding_precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32"
 
 # Get corpus of premises, including their names and serialized expressions
-# TODO: hardcoded
-file_path = hf_hub_download(repo_id="hanwenzhu/wip-lean-embeddings", filename="mathlib_premises_418.tar.gz", revision="main")
-logger.info(f"Mathlib declarations data saved to {file_path}")
-if os.path.isdir(DATA_DIR):
-    logger.info(f"Removing Mathlib declarations data at {DATA_DIR}")
-    shutil.rmtree(DATA_DIR)
-with tarfile.open(file_path, "r:gz") as tar:
-    logger.info(f"Extracting Mathlib declarations data to {DATA_DIR}")
-    tar.extractall(DATA_DIR)
-ntp_toolkit_mathlib_path = os.path.join(DATA_DIR, "Mathlib")
-corpus = Corpus.from_ntp_toolkit(ntp_toolkit_mathlib_path)
+if os.path.isdir(MATHLIB_DIR):
+    logger.info(f"Using saved declarations at {MATHLIB_DIR}")
+else:
+    raise FileNotFoundError(f"Run download_data.py to save data to {MATHLIB_DIR} first")
+corpus = Corpus.from_ntp_toolkit(MATHLIB_DIR)
 
 # Build index from corpus embeddings
 def build_index(use_hub_embeddings=True) -> faiss.Index:
