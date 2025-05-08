@@ -4,7 +4,7 @@ import Lean.Server.Utils
 namespace Lean.PremiseSelection.Cloud
 
 register_option premiseSelection.apiBaseUrl : String := {
-  defValue := "http://18.218.57.199"
+  defValue := "http://leanpremise.net"
   descr := "The base URL of the premise retrieval API"
 }
 
