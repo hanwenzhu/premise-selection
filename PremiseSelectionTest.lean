@@ -4,6 +4,8 @@ import Batteries
 
 open Lean PremiseSelection
 
+set_option trace.premiseSelection.debug true
+
 section Cloud
 
 open Cloud
@@ -59,8 +61,6 @@ example (a b : Nat) : a + b = b + a := by
 #eval show CoreM _ from do
   selectPremisesCore "a b : Nat
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[← Premise.fromName ``Nat.add.comm false] 2
-
-set_option trace.premiseSelection.debug true
 
 elab "simp_all_premises" k:num : tactic => do
   let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions := k.getNat }

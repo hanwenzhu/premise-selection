@@ -110,16 +110,16 @@ async def encode(texts: List[str]):
     embeddings: List[List[float]] = []
     async with httpx.AsyncClient() as client:
         for i in range(0, len(texts), MAX_CLIENT_BATCH_SIZE):
-            try:
-                response = await client.post(
-                    f"{EMBED_SERVICE_URL}/embed",
-                    json={"inputs": texts},
-                    timeout=EMBED_SERVICE_TIMEOUT
-                )
-            except httpx.HTTPError as e:
-                raise RuntimeError(f"Embedding request failed: {e}") from e
+            response = await client.post(
+                f"{EMBED_SERVICE_URL}/embed",
+                json={
+                    "inputs": texts[i : i + MAX_CLIENT_BATCH_SIZE],
+                    "truncate": True
+                },
+                timeout=EMBED_SERVICE_TIMEOUT
+            )
             response.raise_for_status()
-            batch_embeddings: List[List[float]] = response.json()["embeddings"]
+            batch_embeddings: List[List[float]] = response.json()
             embeddings.extend(batch_embeddings)
     return np.array(embeddings, dtype=DTYPE)
 

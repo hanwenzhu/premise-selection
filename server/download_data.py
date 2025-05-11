@@ -34,5 +34,5 @@ file_path = hf_hub_download(
     revision="main",
     local_dir=DATA_DIR,
 )
-os.symlink(file_path, PRECOMPUTED_EMBEDDINGS_PATH)
+shutil.move(file_path, PRECOMPUTED_EMBEDDINGS_PATH)
 logger.info(f"Pre-computed embeddings saved to {PRECOMPUTED_EMBEDDINGS_PATH}")
