@@ -8,7 +8,7 @@ from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index, add
 app = FastAPI()
 
 @app.post("/retrieve")
-def retrieve(request: RetrievalRequest):
+async def retrieve(request: RetrievalRequest):
     if request.k <= 0:
         return []
     if request.k > MAX_K:
@@ -16,7 +16,7 @@ def retrieve(request: RetrievalRequest):
     if len(request.new_premises) > MAX_NEW_PREMISES:
         request.new_premises = request.new_premises[:MAX_NEW_PREMISES]
 
-    premises = retrieve_premises(
+    premises = await retrieve_premises(
         states=request.state,
         imported_modules=request.imported_modules,
         local_premises=request.local_premises,

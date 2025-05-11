@@ -1,6 +1,4 @@
 # WIP script to retrieve premises using the model
-# Notebook version: see retrieve.ipynb on Colab
-# RAM: 4.8 GB on Colab
 
 from collections import OrderedDict
 import logging
@@ -10,33 +8,26 @@ import tarfile
 from typing import Optional, List, Dict, Union, Literal, Set
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
-import torch
-from huggingface_hub import hf_hub_download
 import faiss
+import httpx
 from pydantic import BaseModel
 
 from models import Corpus, PremiseSet, Premise
 
-GPU_AVAILABLE = torch.cuda.is_available()
-DATA_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "data")
+DATA_DIR = os.environ["DATA_DIR"]
 MATHLIB_DIR = os.path.join(DATA_DIR, "Mathlib")
-# TODO tune this number
-# (Thomas) Especially with the LRU cache, I think the primary bottleneck
-# for increasing this number is on the user side:
-# the time it takes to pretty-print all the new statements.
-# For 2048, this is ~4 seconds
-MAX_NEW_PREMISES = 2048 if GPU_AVAILABLE else 256
-# TODO tune this number
-# Batch size for encoding new premises
-MINIBATCH_SIZE = 32 if GPU_AVAILABLE else 16
-MAX_K = 1024
+PRECOMPUTED_EMBEDDINGS_PATH = os.environ["PRECOMPUTED_EMBEDDINGS_PATH"]
+
+EMBED_SERVICE_URL = os.environ["EMBED_SERVICE_URL"]
+EMBED_SERVICE_TIMEOUT = int(os.environ["EMBED_SERVICE_TIMEOUT"])
+
+MAX_NEW_PREMISES = int(os.environ["MAX_NEW_PREMISES"])
+MAX_CLIENT_BATCH_SIZE = int(os.environ["MAX_CLIENT_BATCH_SIZE"])
+MAX_K = int(os.environ["MAX_K"])
+DTYPE = os.environ["DTYPE"]
+assert DTYPE in ["float32", "float16"]
 
 logger = logging.getLogger(__name__)
-
-# TODO: hardcoded
-model = SentenceTransformer("hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5-may07")
-embedding_precision: Literal["float32", "int8", "uint8", "binary", "ubinary"] = "float32"
 
 # Get corpus of premises, including their names and serialized expressions
 if os.path.isdir(MATHLIB_DIR):
@@ -46,26 +37,20 @@ else:
 corpus = Corpus.from_ntp_toolkit(MATHLIB_DIR)
 
 # Build index from corpus embeddings
-def build_index(use_hub_embeddings=True) -> faiss.Index:
-    if use_hub_embeddings:
-        # TODO: hardcoded
-        file_path = hf_hub_download(
-            repo_id="hanwenzhu/wip-lean-embeddings",
-            filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_418.npy",
-            revision="main"
-        )
-        corpus_embeddings = np.load(file_path)
+def build_index(use_precomputed=True) -> faiss.Index:
+    if use_precomputed:
+        corpus_embeddings = np.load(PRECOMPUTED_EMBEDDINGS_PATH)
     else:
+        from sentence_transformers import SentenceTransformer
+        MODEL_ID = os.environ["MODEL_ID"]
+        model = SentenceTransformer(MODEL_ID)
         corpus_embeddings = model.encode(
             [premise.to_string() for premise in corpus.premises],
             show_progress_bar=True,
             batch_size=32,
             convert_to_tensor=True,
         )
-    assert corpus_embeddings.shape == (
-        len(corpus.premises),
-        model.get_sentence_embedding_dimension()
-    )
+    assert corpus_embeddings.shape[0] == len(corpus.premises)
 
     # Build index to search from using FAISS
     index = faiss.IndexFlatIP(corpus_embeddings.shape[1])
@@ -121,20 +106,29 @@ class LRUCache:
 
 embedding_cache = LRUCache(maxsize=32768)  # 32768 items * 768 dimensions * float32 = 192 MB
 
-def embed(states: List[str], premises: List[str]):
+async def encode(texts: List[str]):
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{EMBED_SERVICE_URL}/embed",
+            json={"inputs": texts},
+            timeout=EMBED_SERVICE_TIMEOUT
+        )
+        response.raise_for_status()
+        embeddings = response.json()["embeddings"]
+    return np.array(embeddings, dtype=DTYPE)
+
+async def embed(states: List[str], premises: List[str]):
     if not states:
         raise ValueError("Empty list of states")
     premises_to_embed = []
-    premise_embeddings = np.empty((len(premises), index.d), dtype=embedding_precision)
+    premise_embeddings = np.empty((len(premises), index.d), dtype=DTYPE)
     for i, premise in enumerate(premises):
         if premise in embedding_cache:
             premise_embeddings[i] = embedding_cache[premise]
         else:
             premises_to_embed.append((i, premise))
-    packed_embeddings = model.encode(
+    packed_embeddings = await encode(
         states + [text for _, text in premises_to_embed],
-        batch_size=MINIBATCH_SIZE,
-        precision=embedding_precision
     )
     state_embeddings = packed_embeddings[:len(states)]
     computed_premise_embeddings = packed_embeddings[len(states):]
@@ -144,16 +138,10 @@ def embed(states: List[str], premises: List[str]):
     return state_embeddings, premise_embeddings
 
 
-def retrieve_premises_core(states: Union[str, List[str]], k: int, new_premises: List[NewPremise], **kwargs):
-    if isinstance(states, str):
-        return_list = False
-        states = [states]
-    else:
-        return_list = True
-
+async def retrieve_premises_core(states: List[str], k: int, new_premises: List[NewPremise], **kwargs):
     # Embed states and new premises
     new_premise_decls = [premise_data.decl for premise_data in new_premises]
-    state_embeddings, new_premise_embeddings = embed(states, new_premise_decls)
+    state_embeddings, new_premise_embeddings = await embed(states, new_premise_decls)
 
     # Retrieve premises from indexed premises
     scoress, indicess = index.search(state_embeddings, k, **kwargs)  # type: ignore
@@ -168,7 +156,7 @@ def retrieve_premises_core(states: Union[str, List[str]], k: int, new_premises: 
     ]
 
     # Rank new premises
-    new_scoress = model.similarity(state_embeddings, new_premise_embeddings)
+    new_scoress = np.matmul(state_embeddings, new_premise_embeddings.T)
     scored_new_premises = [
         [
             {"score": score.item(), "name": premise_data.name}
@@ -183,12 +171,9 @@ def retrieve_premises_core(states: Union[str, List[str]], k: int, new_premises: 
         for indexed, new in zip(scored_indexed_premises, scored_new_premises)
     ]
 
-    if return_list:
-        return scored_premises
-    else:
-        return scored_premises[0]
+    return scored_premises
 
-def retrieve_premises(
+async def retrieve_premises(
     states: Union[str, List[str]],
     imported_modules: Optional[List[str]],
     local_premises: List[str | int],
@@ -240,11 +225,16 @@ def retrieve_premises(
     kwargs = {}
     kwargs["params"] = faiss.SearchParameters(sel=sel)  # type: ignore
 
-    return retrieve_premises_core(states, k, new_premises, **kwargs)
+    if isinstance(states, str):
+        premises = await retrieve_premises_core([states], k, new_premises, **kwargs)
+        return premises[0]
+    else:
+        premises = await retrieve_premises_core(states, k, new_premises, **kwargs)
+        return premises
 
 # original_modules: List[str] = corpus.modules.copy()
 added_premises: List[str] = []
-def add_premise_to_corpus_index(premise: Premise):
+async def add_premise_to_corpus_index(premise: Premise):
     """**Permanently** adds a premise to the index (for the current session).
     Warning: this is (as of currently) only intended for testing / easier benchmarking.
     In most cases, the `new_premises` field of /retrieve should be used instead.
@@ -258,7 +248,7 @@ def add_premise_to_corpus_index(premise: Premise):
         # We don't add duplicate premises from the same module
         return
     corpus.add_premise(premise)
-    premise_embedding = model.encode([premise.to_string()])
+    premise_embedding = await encode([premise.to_string()])
     index.add(premise_embedding)  # type: ignore
     added_premises.append(premise.name)
 

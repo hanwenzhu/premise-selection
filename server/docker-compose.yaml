@@ -1,0 +1,45 @@
+services:
+  embed:
+    image: ghcr.io/huggingface/text-embeddings-inference:${HEI_VERSION}
+    ports:
+      - "8080:80"
+    environment:
+      - DTYPE=${DTYPE}
+      - MODEL_ID=${MODEL_ID}
+      - MAX_BATCH_TOKENS=${MAX_BATCH_TOKENS}
+      - MAX_CLIENT_BATCH_SIZE=${MAX_CLIENT_BATCH_SIZE}
+    volumes:
+      - ./data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    secrets:
+      - HF_TOKEN
+  app:
+    build: ./app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - embed
+    environment:
+      - DATA_DIR=/data
+      - EMBED_SERVICE_URL=http://embed:80
+      - EMBED_SERVICE_TIMEOUT=${EMBED_SERVICE_TIMEOUT}
+      - MAX_NEW_PREMISES=${MAX_NEW_PREMISES}
+      - MAX_CLIENT_BATCH_SIZE=${MAX_CLIENT_BATCH_SIZE}
+      - MAX_K=${MAX_K}
+      - DTYPE=${DTYPE}
+    volumes:
+      - ./app:/app
+      - ./data:/data
+    secrets:
+      - HF_TOKEN
+
+# Not used at the moment
+secrets:
+  HF_TOKEN:
+    file: ./secrets/HF_TOKEN

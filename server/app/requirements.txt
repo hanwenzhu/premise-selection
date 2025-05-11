@@ -1,0 +1,5 @@
+faiss-cpu==1.11.0
+numpy<2
+fastapi[standard]
+huggingface_hub
+httpx
