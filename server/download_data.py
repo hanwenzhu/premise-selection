@@ -31,7 +31,8 @@ with tarfile.open(file_path, "r:gz") as tar:
 file_path = hf_hub_download(
     repo_id="hanwenzhu/wip-lean-embeddings",
     filename="embeddings_all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5_418.npy",
-    revision="main"
+    revision="main",
+    local_dir=DATA_DIR,
 )
 os.symlink(file_path, PRECOMPUTED_EMBEDDINGS_PATH)
 logger.info(f"Pre-computed embeddings saved to {PRECOMPUTED_EMBEDDINGS_PATH}")

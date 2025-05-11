@@ -1,7 +1,7 @@
 ## DO NOT MODIFY; COPY FROM BABEL
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, List, Optional, Tuple, Type, Literal, Iterator, Set
+from typing import Dict, Any, List, Optional, Tuple, Type, Literal, Iterator, Set, TYPE_CHECKING
 import json
 import os
 import re
@@ -9,7 +9,9 @@ import logging
 
 import tqdm
 import numpy as np
-import torch
+
+if TYPE_CHECKING:
+    import torch
 
 
 logger = logging.getLogger(__name__)
@@ -312,7 +314,8 @@ class PremiseSet:
                     self._added_name2idx[other_premise_name] = len(self._added)
                     self._added.append(other_premise_name)
 
-    def sample(self, size: int, generator: Optional[torch.Generator] = None) -> List[Premise]:
+    def sample(self, size: int, generator: Optional["torch.Generator"] = None) -> List[Premise]:
+        import torch
         if len(self) == 0:  # extreme exception
             return [Premise("", "Init.Prelude", 0, 0, 0, "", [], "", None, False, False) for _ in range(size)]
         if generator is not None:

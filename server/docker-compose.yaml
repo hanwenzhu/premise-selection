@@ -1,6 +1,6 @@
 services:
   embed:
-    image: ghcr.io/huggingface/text-embeddings-inference:${HEI_VERSION}
+    image: ghcr.io/huggingface/text-embeddings-inference:${TEI_VERSION}
     ports:
       - "8080:80"
     environment:
@@ -8,6 +8,7 @@ services:
       - MODEL_ID=${MODEL_ID}
       - MAX_BATCH_TOKENS=${MAX_BATCH_TOKENS}
       - MAX_CLIENT_BATCH_SIZE=${MAX_CLIENT_BATCH_SIZE}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS}
     volumes:
       - ./data:/data
     deploy:
@@ -27,6 +28,7 @@ services:
       - embed
     environment:
       - DATA_DIR=/data
+      - PRECOMPUTED_EMBEDDINGS_PATH=/data/embeddings.npy
       - EMBED_SERVICE_URL=http://embed:80
       - EMBED_SERVICE_TIMEOUT=${EMBED_SERVICE_TIMEOUT}
       - MAX_NEW_PREMISES=${MAX_NEW_PREMISES}

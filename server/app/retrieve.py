@@ -107,14 +107,20 @@ class LRUCache:
 embedding_cache = LRUCache(maxsize=32768)  # 32768 items * 768 dimensions * float32 = 192 MB
 
 async def encode(texts: List[str]):
+    embeddings: List[List[float]] = []
     async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"{EMBED_SERVICE_URL}/embed",
-            json={"inputs": texts},
-            timeout=EMBED_SERVICE_TIMEOUT
-        )
-        response.raise_for_status()
-        embeddings = response.json()["embeddings"]
+        for i in range(0, len(texts), MAX_CLIENT_BATCH_SIZE):
+            try:
+                response = await client.post(
+                    f"{EMBED_SERVICE_URL}/embed",
+                    json={"inputs": texts},
+                    timeout=EMBED_SERVICE_TIMEOUT
+                )
+            except httpx.HTTPError as e:
+                raise RuntimeError(f"Embedding request failed: {e}") from e
+            response.raise_for_status()
+            batch_embeddings: List[List[float]] = response.json()["embeddings"]
+            embeddings.extend(batch_embeddings)
     return np.array(embeddings, dtype=DTYPE)
 
 async def embed(states: List[str], premises: List[str]):
