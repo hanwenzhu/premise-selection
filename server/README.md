@@ -18,7 +18,11 @@ Go to directory `server`.
 
 Set the relevant variables in `.env`. The important ones are: `HEI_VERSION` (for switching to CPU or different GPU backends for Hugging Face text-embeddings-inference); `MAX_BATCH_TOKENS` (see text-embeddings-inference README).
 
-`docker compose up`
+To start, run
+```sh
+docker compose up
+```
+which runs the service on `http://localhost:8000`.
 
 #### Misc
 Information on faiss-gpu:
