@@ -14,7 +14,7 @@ This also means this should be re-ran for every data or model update.
 
 Go to directory `server`.
 
-Set the relevant variables in `.env`. The important ones are: `TEI_VERSION` (for switching to CPU or different GPU backends for Hugging Face text-embeddings-inference); `DTYPE`, `MAX_BATCH_TOKENS`,  (see [.env]).
+Set the relevant variables in `.env`. The important ones are: `TEI_VERSION` (for switching to CPU or different GPU backends for Hugging Face text-embeddings-inference); `DTYPE`, `EMBED_SERVICE_MAX_CONCURRENT_INPUTS` (see [.env]).
 
 To start, run
 

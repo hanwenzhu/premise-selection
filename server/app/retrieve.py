@@ -132,6 +132,7 @@ class EmbedServiceLimiter:
     async def acquire(self, num_inputs: int):
         async with self.lock:
             if num_inputs > self.available_compute:
+                logger.warning(f"Embedding service overloaded ({num_inputs} requested, {self.available_compute} available)")
                 raise EmbedServiceOverloaded()
             self.available_compute -= num_inputs
     async def release(self, num_inputs: int):
@@ -178,7 +179,7 @@ async def embed(states: List[str], premises: List[str], batch_sequential: bool =
             premises_to_embed.append((i, premise))
 
     inputs = [EmbedInput(s, False) for s in states] + [EmbedInput(p, True) for _, p in premises_to_embed]
-    logger.info(f"Received {len(states) + len(premises)} inputs, embedding {len(inputs)} cache misses")
+    logger.info(f"Received {len(states) + len(premises)} inputs; embedding {len(inputs)} cache misses")
 
     batch_embeddings_list: List[np.ndarray]
     async with httpx.AsyncClient(timeout=EMBED_SERVICE_TIMEOUT) as client:
@@ -201,7 +202,7 @@ async def embed(states: List[str], premises: List[str], batch_sequential: bool =
     state_embeddings = packed_embeddings[:len(states)]
     computed_premise_embeddings = packed_embeddings[len(states):]
     for (i, premise), embedding in zip(premises_to_embed, computed_premise_embeddings):
-        embedding_cache[premise] = embedding
+        # embedding_cache[premise] = embedding  # this is done in embed_batch
         premise_embeddings[i] = embedding
     return state_embeddings, premise_embeddings
 
