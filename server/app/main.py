@@ -4,7 +4,7 @@ import uvicorn
 import httpx
 
 from models import SimplePremise
-from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index, added_premises, MAX_NEW_PREMISES, MAX_K, RetrievalRequest
+from retrieve import corpus, retrieve_premises, add_premise_to_corpus_index, added_premises, MAX_NEW_PREMISES, MAX_K, RetrievalRequest, EmbedServiceOverloaded
 
 app = FastAPI()
 
@@ -27,6 +27,8 @@ async def retrieve(request: RetrievalRequest):
         )
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+    except EmbedServiceOverloaded:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: Embed service overloaded")
     return premises
 
 @app.get("/max-new-premises")

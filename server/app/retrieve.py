@@ -1,11 +1,11 @@
 # WIP script to retrieve premises using the model
 
+import asyncio
 from collections import OrderedDict
+from dataclasses import dataclass
 import logging
 import os
-import shutil
-import tarfile
-from typing import Optional, List, Dict, Union, Literal, Set
+from typing import Optional, List, Dict, Union, Literal, Set, Tuple
 
 import numpy as np
 import faiss
@@ -19,15 +19,20 @@ MATHLIB_DIR = os.path.join(DATA_DIR, "Mathlib")
 PRECOMPUTED_EMBEDDINGS_PATH = os.environ["PRECOMPUTED_EMBEDDINGS_PATH"]
 
 EMBED_SERVICE_URL = os.environ["EMBED_SERVICE_URL"]
-EMBED_SERVICE_TIMEOUT = int(os.environ["EMBED_SERVICE_TIMEOUT"])
+if os.environ["EMBED_SERVICE_TIMEOUT"]:
+    EMBED_SERVICE_TIMEOUT = float(os.environ["EMBED_SERVICE_TIMEOUT"])
+else:
+    EMBED_SERVICE_TIMEOUT = None
+EMBED_SERVICE_MAX_CONCURRENT_INPUTS = int(os.environ["EMBED_SERVICE_MAX_CONCURRENT_INPUTS"])
 
+LRU_CACHE_SIZE = int(os.environ["LRU_CACHE_SIZE"])
 MAX_NEW_PREMISES = int(os.environ["MAX_NEW_PREMISES"])
 MAX_CLIENT_BATCH_SIZE = int(os.environ["MAX_CLIENT_BATCH_SIZE"])
 MAX_K = int(os.environ["MAX_K"])
 DTYPE = os.environ["DTYPE"]
 assert DTYPE in ["float32", "float16"]
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 
 # Get corpus of premises, including their names and serialized expressions
 if os.path.isdir(MATHLIB_DIR):
@@ -95,7 +100,7 @@ class LRUCache:
         if key in self.cache:
             self.cache.move_to_end(key)
         self.cache[key] = value
-        if len(self.cache) > self.maxsize:
+        while len(self.cache) > self.maxsize:
             self.cache.popitem(last=False)
 
     def __contains__(self, key: str):
@@ -104,26 +109,64 @@ class LRUCache:
     def __len__(self):
         return len(self.cache)
 
-embedding_cache = LRUCache(maxsize=32768)  # 32768 items * 768 dimensions * float32 = 192 MB
+embedding_cache = LRUCache(maxsize=LRU_CACHE_SIZE)
 
-async def encode(texts: List[str]):
-    embeddings: List[List[float]] = []
-    async with httpx.AsyncClient() as client:
-        for i in range(0, len(texts), MAX_CLIENT_BATCH_SIZE):
-            response = await client.post(
-                f"{EMBED_SERVICE_URL}/embed",
-                json={
-                    "inputs": texts[i : i + MAX_CLIENT_BATCH_SIZE],
-                    "truncate": True
-                },
-                timeout=EMBED_SERVICE_TIMEOUT
-            )
-            response.raise_for_status()
-            batch_embeddings: List[List[float]] = response.json()
-            embeddings.extend(batch_embeddings)
-    return np.array(embeddings, dtype=DTYPE)
+class EmbedServiceOverloaded(Exception):
+    pass
 
-async def embed(states: List[str], premises: List[str]):
+class EmbedServiceLimiter:
+    """A basic structure to help cap the number of concurrent input requests
+    to the embed service to `max_concurrent_inputs`.
+
+    If more requests are `acquire`d than `max_concurrent_inputs`, an
+    `EmbedServiceOverloaded` is thrown (instead of awaiting until availability
+    like usual `asyncio.Semaphore`).
+
+    NOTE: This assumes a single uvicorn worker; otherwise the `embed_service_limiter`
+    instance will be cloned. (Server concurrency handled by ASGI/`async`.)
+    """
+    def __init__(self, max_concurrent_inputs: int):
+        self.max_concurrent_inputs = max_concurrent_inputs
+        self.available_compute = max_concurrent_inputs
+        self.lock = asyncio.Lock()
+    async def acquire(self, num_inputs: int):
+        async with self.lock:
+            if num_inputs > self.available_compute:
+                raise EmbedServiceOverloaded()
+            self.available_compute -= num_inputs
+    async def release(self, num_inputs: int):
+        async with self.lock:
+            self.available_compute += num_inputs
+            # Sanity check
+            self.available_compute = min(self.max_concurrent_inputs, self.available_compute)
+
+embed_service_limiter = EmbedServiceLimiter(EMBED_SERVICE_MAX_CONCURRENT_INPUTS)
+
+@dataclass
+class EmbedInput:
+    text: str
+    should_cache: bool
+
+async def embed_batch(client: httpx.AsyncClient, batch: List[EmbedInput]) -> np.ndarray:
+    """Sends a batch to the text-embeddings-inference service, and caches
+    computed embeddings in `embedding_cache`."""
+    await embed_service_limiter.acquire(len(batch))
+    try:
+        response = await client.post(
+            f"{EMBED_SERVICE_URL}/embed",
+            json={"inputs": [input.text for input in batch], "truncate": True},
+            timeout=EMBED_SERVICE_TIMEOUT
+        )
+    finally:
+        await embed_service_limiter.release(len(batch))
+    response.raise_for_status()
+    embeddings = np.array(response.json(), dtype=DTYPE)
+    for input, embedding in zip(batch, embeddings):
+        if input.should_cache:
+            embedding_cache[input.text] = embedding
+    return embeddings
+
+async def embed(states: List[str], premises: List[str], batch_sequential: bool = True) -> Tuple[np.ndarray, np.ndarray]:
     if not states:
         raise ValueError("Empty list of states")
     premises_to_embed = []
@@ -133,9 +176,28 @@ async def embed(states: List[str], premises: List[str]):
             premise_embeddings[i] = embedding_cache[premise]
         else:
             premises_to_embed.append((i, premise))
-    packed_embeddings = await encode(
-        states + [text for _, text in premises_to_embed],
-    )
+
+    inputs = [EmbedInput(s, False) for s in states] + [EmbedInput(p, True) for _, p in premises_to_embed]
+    logger.info(f"Received {len(states) + len(premises)} inputs, embedding {len(inputs)} cache misses")
+
+    batch_embeddings_list: List[np.ndarray]
+    async with httpx.AsyncClient(timeout=EMBED_SERVICE_TIMEOUT) as client:
+        if batch_sequential:
+            batch_embeddings_list = []
+            for i in range(0, len(inputs), MAX_CLIENT_BATCH_SIZE):
+                batch = inputs[i : i + MAX_CLIENT_BATCH_SIZE]
+                batch_embeddings = await embed_batch(client, batch)
+                batch_embeddings_list.append(batch_embeddings)
+
+        else:
+            batch_embeddings_list = await asyncio.gather(*[
+                embed_batch(client, inputs[i : i + MAX_CLIENT_BATCH_SIZE])
+                for i in range(0, len(inputs), MAX_CLIENT_BATCH_SIZE)
+            ])
+
+    packed_embeddings = np.vstack(batch_embeddings_list, dtype=DTYPE)
+    assert packed_embeddings.shape == (len(inputs), index.d)
+
     state_embeddings = packed_embeddings[:len(states)]
     computed_premise_embeddings = packed_embeddings[len(states):]
     for (i, premise), embedding in zip(premises_to_embed, computed_premise_embeddings):
@@ -254,7 +316,8 @@ async def add_premise_to_corpus_index(premise: Premise):
         # We don't add duplicate premises from the same module
         return
     corpus.add_premise(premise)
-    premise_embedding = await encode([premise.to_string()])
+    async with httpx.AsyncClient(timeout=EMBED_SERVICE_TIMEOUT) as client:
+        premise_embedding = await embed_batch(client, [EmbedInput(premise.to_string(), False)])
     index.add(premise_embedding)  # type: ignore
     added_premises.append(premise.name)
 
