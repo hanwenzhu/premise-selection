@@ -1,6 +1,5 @@
 import PremiseSelection
 import Lean
-import Batteries
 
 open Lean PremiseSelection
 

@@ -2,7 +2,6 @@
 Getting new user-defined premises in an environment
 -/
 import PremiseSelection.Basic
-import Batteries.Data.List.Basic
 
 open Lean Core
 
@@ -110,6 +109,27 @@ def fromName (name : Name) (useCache : Bool) : CoreM Premise := do
       fromNameCacheRef.modify fun cache => cache.insert name premise
       return premise
 
+/--!
+Copied from `List.toChunks` in `Batteries.Data.List.Basic`
+(not importing `batteries` to minimize dependencies; this is a temporary decision for easier development).
+-/
+private def List.toChunks {α} : Nat → List α → List (List α)
+  | _, [] => []
+  | 0, xs => [xs]
+  | n, x :: xs =>
+    let rec
+    /-- Auxliary definition used to define `toChunks`.
+    `toChunks.go xs acc₁ acc₂` pushes elements into `acc₁` until it reaches size `n`,
+    then it pushes the resulting list to `acc₂` and continues until `xs` is exhausted. -/
+    go : List α → Array α → Array (List α) → List (List α)
+    | [], acc₁, acc₂ => acc₂.push acc₁.toList |>.toList
+    | x :: xs, acc₁, acc₂ =>
+      if acc₁.size == n then
+        go xs ((Array.mkEmpty n).push x) (acc₂.push acc₁.toList)
+      else
+        go xs (acc₁.push x) acc₂
+    go xs #[x] #[]
+
 /-- This is equivalent to `names.mapM Premise.fromName`, but it processes chunks in parallel. -/
 def fromNames (names : Array Name) (chunkSize : Nat) (useCache : Bool) : CoreM (Array Premise) := do
   if chunkSize == 1 then
@@ -123,7 +143,7 @@ def fromNames (names : Array Name) (chunkSize : Nat) (useCache : Bool) : CoreM (
     -- The only reason for toList is because `List.toChunks` exists
     -- In my tests, chunking is about 25% faster than not chunking, so the gain is not significant (can probably remove)
     -- (This is a monadic version of `List.mapAsyncChunked` in Mathlib)
-    let premiseChunkTasks ← names.toList.toChunks chunkSize |>.mapM fun names =>
+    let premiseChunkTasks ← List.toChunks chunkSize names.toList |>.mapM fun names =>
       IO.asTask do
         let (premises, _) ← CoreM.toIO (ctx := ctxCore) (s := sCore) do
           names.mapM (Premise.fromName (useCache := useCache))
