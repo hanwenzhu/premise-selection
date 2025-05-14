@@ -2,9 +2,8 @@
 Getting new user-defined premises in an environment
 -/
 import PremiseSelection.Basic
-import Batteries.Data.List.Basic
 
-open Lean
+open Lean Core
 
 namespace Lean.PremiseSelection
 
@@ -56,22 +55,11 @@ def getKind (cinfo : ConstantInfo) : MetaM String := do
   return kind
 
 /-- A reference holding a mapping from a user-defined premise `name` to `Premise.fromName name` (see `Premise.fromName`). -/
-initialize Premise.fromNameCacheRef : IO.Ref (NameMap Premise) ← IO.mkRef ∅
+initialize fromNameCacheRef : IO.Ref (NameMap Premise) ← IO.mkRef ∅
 
-/--
-Serialize a declaration into a `Premise` by pretty-printing the declaration docstring and signature.
-
-This function is cached by `Premise.fromNameCacheRef`, so on the second time it is
-called on the same declaration, it reads the previously stored result instead of calculates the signature again.
-(**TODO**) This is just a temporary solution so that it is reasonable to call e.g. `aesop (add unsafe (by hammer))`
-where `hammer` is called many times.
--/
-def fromName (name : Name) : CoreM Premise := do
-  if let some premise := (← Premise.fromNameCacheRef.get).find? name then
-    return premise
-
+def fromNameCore (name : Name) : CoreM Premise := do
   -- Calculate signature from declaration name
-  let premise ← MetaM.run' do
+  MetaM.run' do
     withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) do
       let env ← getEnv
       -- IO.eprintln name
@@ -101,79 +89,51 @@ def fromName (name : Name) : CoreM Premise := do
 
       return { name, decl }
 
-  Premise.fromNameCacheRef.modify fun cache => cache.insert name premise
-  return premise
+/--
+Serialize a declaration into a `Premise` by pretty-printing the declaration docstring and signature.
 
-end PrettyPrinting
+If `useCache := true`, this function is cached by `fromNameCacheRef`, so on the second time it is
+called on the same declaration, it reads the previously stored result instead of calculates the signature again.
+(**TODO**) This is just a temporary solution so that it is reasonable to call e.g. `aesop (add unsafe (by hammer))`
+where `hammer` is called many times.
+-/
+def fromName (name : Name) (useCache : Bool) : CoreM Premise := do
+  if !useCache then
+    let premise ← fromNameCore name
+    return premise
+  else
+    match (← fromNameCacheRef.get).find? name with
+    | some premise => return premise
+    | none =>
+      let premise ← fromNameCore name
+      fromNameCacheRef.modify fun cache => cache.insert name premise
+      return premise
 
-open Lean Core
+/--!
+Copied from `List.toChunks` in `Batteries.Data.List.Basic`
+(not importing `batteries` to minimize dependencies; this is a temporary decision for easier development).
+-/
+private def List.toChunks {α} : Nat → List α → List (List α)
+  | _, [] => []
+  | 0, xs => [xs]
+  | n, x :: xs =>
+    let rec
+    /-- Auxliary definition used to define `toChunks`.
+    `toChunks.go xs acc₁ acc₂` pushes elements into `acc₁` until it reaches size `n`,
+    then it pushes the resulting list to `acc₂` and continues until `xs` is exhausted. -/
+    go : List α → Array α → Array (List α) → List (List α)
+    | [], acc₁, acc₂ => acc₂.push acc₁.toList |>.toList
+    | x :: xs, acc₁, acc₂ =>
+      if acc₁.size == n then
+        go xs ((Array.mkEmpty n).push x) (acc₂.push acc₁.toList)
+      else
+        go xs (acc₁.push x) acc₂
+    go xs #[x] #[]
 
-/-- Premises from a module whose name has one of the following as a component are not retrieved. -/
-def moduleBlackList : Array String := #[
-  "Aesop", "Auto", "Cli", "CodeAction", "DocGen4", "Duper", "ImportGraph", "Lake", "Lean", "LeanSearchClient", "Linter", "Mathport",
-  "MD4Lean", "Plausible", "ProofWidgets", "Qq", "QuerySMT", "Tactic", "TacticExtra", "Test", "Testing", "UnicodeBasic", "Util"
-]
-
-/-- A premise whose name has one of the following as a component is not retrieved. -/
-def nameBlackList : Array String := #["Lean", "Lake", "Qq"]
-
-/-- A premise whose `type.getForallBody.getAppFn` is a constant that has this prefix is not retrieved. -/
-def typePrefixBlackList : Array Name := #[`Lean]
-
-def isBlackListedPremise (env : Environment) (name : Name) : Bool := Id.run do
-  if name == ``sorryAx then return true
-  if name.isInternalDetail then return true
-  if nameBlackList.any (fun p => name.anyS (· == p)) then return true
-  -- let some moduleName := env.getModuleFor? name | return true
-  -- if moduleBlackList.any (fun p => moduleName.anyS (· == p)) then return true
-  let some ci := env.find? name | return true
-  if let .const fnName _ := ci.type.getForallBody.getAppFn then
-    if typePrefixBlackList.any (fun p => p.isPrefixOf fnName) then return true
-  return false
-
-def getModules (exclude : NameSet) : CoreM (Array ModuleData) := do
-  let env ← getEnv
-  let moduleNames := env.header.moduleNames
-  let moduleData := env.header.moduleData
-  let mut modules := #[]
-
-  -- For each index `i` of a new module
-  for i in [0:moduleData.size] do
-    let moduleName := moduleNames[i]!
-    if exclude.contains moduleName then
-      continue
-    if moduleBlackList.any (fun p => moduleName.anyS (· == p)) then
-      continue
-
-    -- Add corresponding module data
-    modules := modules.push moduleData[i]!
-
-  return modules
-
-/-- Set of new premises in the environment -/
-def getNames (excludeModules : NameSet) : CoreM (Array Name) := do
-  let env ← getEnv
-  let mut names := #[]
-  let modules ← getModules excludeModules
-
-  -- All filtered constants from unindexed modules
-  for moduleData in modules do
-    for name in moduleData.constNames do
-      unless isBlackListedPremise env name do
-        names := names.push name
-
-  -- All filtered constants from this module
-  -- unless indexedMods.contains env.header.mainModule do
-  for (name, _) in env.constants.map₂ do
-    unless isBlackListedPremise env name do
-      names := names.push name
-  return names
-
-def getPremises (excludeModules : NameSet) (chunkSize := 256) : CoreM (Array Premise) := do
-  let name ← getNames excludeModules
-
+/-- This is equivalent to `names.mapM Premise.fromName`, but it processes chunks in parallel. -/
+def fromNames (names : Array Name) (chunkSize : Nat) (useCache : Bool) : CoreM (Array Premise) := do
   if chunkSize == 1 then
-    let premises ← name.mapM Premise.fromName
+    let premises ← names.mapM (Premise.fromName (useCache := useCache))
     return premises
 
   else
@@ -183,13 +143,32 @@ def getPremises (excludeModules : NameSet) (chunkSize := 256) : CoreM (Array Pre
     -- The only reason for toList is because `List.toChunks` exists
     -- In my tests, chunking is about 25% faster than not chunking, so the gain is not significant (can probably remove)
     -- (This is a monadic version of `List.mapAsyncChunked` in Mathlib)
-    let premiseChunkTasks ← name.toList.toChunks chunkSize |>.mapM fun names =>
+    let premiseChunkTasks ← List.toChunks chunkSize names.toList |>.mapM fun names =>
       IO.asTask do
         let (premises, _) ← CoreM.toIO (ctx := ctxCore) (s := sCore) do
-          names.mapM Premise.fromName
+          names.mapM (Premise.fromName (useCache := useCache))
         return premises
     let premises ← premiseChunkTasks.flatMapM fun task => do
       IO.ofExcept (← IO.wait task)
     return premises.toArray
+
+end PrettyPrinting
+
+/-! **TODO**: use the implementation of deny-list in https://github.com/leanprover/lean4/tree/mepo instead (once the branch is merged) -/
+
+run_cmd
+  for module in #[
+    "Aesop", "Auto", "Cli", "CodeAction", "DocGen4", "Duper", "ImportGraph", "Lake", "Lean", "LeanSearchClient", "Linter", "Mathport",
+    "MD4Lean", "Plausible", "ProofWidgets", "Qq", "QuerySMT", "Tactic", "TacticExtra", "Test", "Testing", "UnicodeBasic", "Util"
+  ] do
+    modifyEnv fun env => moduleDenyListExt.addEntry env module
+
+run_cmd
+  for name in #["Lean", "Lake", "Qq"] do
+    modifyEnv fun env => nameDenyListExt.addEntry env name
+
+run_cmd
+  for typePrefix in #[`Lean] do
+    modifyEnv fun env => typePrefixDenyListExt.addEntry env typePrefix
 
 end Lean.PremiseSelection.Premise

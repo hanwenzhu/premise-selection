@@ -1,2 +1,3 @@
 # premise-selection
-Note: development is under the `v4.18.0` branch for now; the `main` branch should not be used.
+
+This code is tested on Lean versions `v4.18.0` to `v4.20.0-rc5`.
