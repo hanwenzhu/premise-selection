@@ -1,5 +1,6 @@
-import PremiseSelection.Premise
+import Lean.PremiseSelection
 import Lean.Server.Utils
+import PremiseSelection.Premise
 
 namespace Lean.PremiseSelection.Cloud
 
