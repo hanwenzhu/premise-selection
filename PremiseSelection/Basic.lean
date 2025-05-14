@@ -1,3 +1,10 @@
+/-
+Copyright (c) 2025 Lean FRO, LLC. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Kim Morrison, Thomas Zhu
+
+(This file is copied from the `mepo` branch in `leanprover/lean4`.)
+-/
 import Lean.PremiseSelection
 
 namespace Lean.PremiseSelection
