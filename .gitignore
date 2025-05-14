@@ -1,15 +1,4 @@
 .DS_Store
 
-# Premise selection server
-/server/data/
-/server/stress_test.py
-/server/secrets/
-
 # Lean
 /.lake
-
-# Python.gitignore
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
