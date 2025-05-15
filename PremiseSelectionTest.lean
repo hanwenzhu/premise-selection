@@ -177,13 +177,19 @@ set_premise_selector
   <|> empty
 
 /--
+warning: Lean.PremiseSelection.orElse: Premise selector failed with error:
+Could not send API request to --malformed-url/max-new-premises. curl exited with code 2:
+curl: option --malformed-url/max-new-premises: is unknown
+curl: try 'curl --help' or 'curl --manual' for more information
+ Trying the alternative selector.
+---
 info: Premise suggestions: []
 ---
 info: [premiseSelection.debug] State: a b : Nat
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)
 -/
 #guard_msgs in
-set_option premiseSelection.apiBaseUrl "http://unreachable" in
+set_option premiseSelection.apiBaseUrl "--malformed-url" in
 example (a b : Nat) : a + b = b + a := by
   suggest_premises
   apply Nat.add_comm

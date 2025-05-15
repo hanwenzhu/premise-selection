@@ -10,7 +10,10 @@ namespace Lean.PremiseSelection
 def orElse (s₁ : Selector) (s₂ : Unit → Selector) : Selector := fun g config => do
   try
     s₁ g config
-  catch _ =>
+  catch e =>
+    logWarning m!"Lean.PremiseSelection.orElse: Premise selector failed with error:
+{e.toMessageData}
+Trying the alternative selector."
     s₂ () g config
 
 instance : OrElse Selector := ⟨orElse⟩
