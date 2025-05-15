@@ -2,3 +2,4 @@ import PremiseSelection.Basic
 import PremiseSelection.Cloud
 import PremiseSelection.MePo
 import PremiseSelection.Premise
+import PremiseSelection.Combinators
