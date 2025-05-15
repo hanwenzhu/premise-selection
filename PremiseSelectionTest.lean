@@ -167,3 +167,38 @@ example (a b : Nat) : a + b = b + a := by
   simp_all_premises 16
 
 end MePo
+
+section Combinators
+
+/-! `orElse` -/
+
+set_premise_selector
+  Cloud.premiseSelector
+  <|> empty
+
+/--
+info: Premise suggestions: []
+---
+info: [premiseSelection.debug] State: a b : Nat
+    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)
+-/
+#guard_msgs in
+set_option premiseSelection.apiBaseUrl "http://unreachable" in
+example (a b : Nat) : a + b = b + a := by
+  suggest_premises
+  apply Nat.add_comm
+
+/-! `interleave` -/
+
+set_premise_selector interleave #[
+  Cloud.premiseSelector,
+  mepoSelector (useRarity := true) (p := mepoP) (c := mepoC),
+  empty
+]
+
+/-- Manually check this is the interleave of cloud & MePo results -/
+example (a b : Nat) : a + b = b + a := by
+  suggest_premises
+  apply Nat.add_comm
+
+end Combinators
