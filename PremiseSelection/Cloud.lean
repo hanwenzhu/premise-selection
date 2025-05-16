@@ -9,8 +9,15 @@ register_option premiseSelection.apiBaseUrl : String := {
   descr := "The base URL of the premise retrieval API"
 }
 
+register_option premiseSelection.maxUnindexedPremises : Nat := {
+  defValue := 8192
+  descr := "The maximum number of unindexed premises to send to the premise selection server. The server may also impose its own restriction on this number, so we take the minimum of this number and the server's limit."
+}
+
 def getApiBaseUrl (opts : Options) : String :=
   premiseSelection.apiBaseUrl.get opts
+
+initialize Lean.registerTraceClass `premiseSelection.cloud.debug
 
 def makeRequest {α : Type _} [FromJson α] (method urlPath : String) (data? : Option Json) : CoreM α := do
   let apiBaseUrl := getApiBaseUrl (← getOptions)
@@ -26,6 +33,8 @@ def makeRequest {α : Type _} [FromJson α] (method urlPath : String) (data? : O
       "--data", "@-"
     ]
   curlArgs := curlArgs.push apiUrl
+
+  trace[premiseSelection.cloud.debug] m!"Making a {method} request to {urlPath} with data {data?}"
 
   let output : IO.Process.Output ← id <| do
     if let some data := data? then
@@ -65,7 +74,9 @@ Unindexed premises are represented as a `Premise` (name and signature).
 
 /-- The maximum number of new premises to send to the server. -/
 def getMaxUnindexedPremises : CoreM Nat := do
-  makeRequest "GET" "/max-new-premises" none
+  let serverMaxNewPremises ← makeRequest "GET" "/max-new-premises" none
+  let userMaxNewPremises := premiseSelection.maxUnindexedPremises.get (← getOptions)
+  return min serverMaxNewPremises userMaxNewPremises
 
 /-- A cache holding indexed premises by the server. -/
 initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
@@ -91,10 +102,11 @@ def getIndexedModules : CoreM NameSet := do
 /-- A cache holding the premises imported from other modules that are indexed by the server. -/
 initialize indexedImportedPremisesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
 /-- A cache holding the premises imported from other modules that are not indexed by the server. -/
-initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise)) ← IO.mkRef none
+initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise × Nat)) ← IO.mkRef none
 
-/-- Get imported premises, separated by whether they are indexed by the server. -/
-protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × Array Premise) := do
+/-- Get imported premises, separated by whether they are indexed by the server,
+and a number indicating the true number of unindexed imported premises. -/
+protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × Array Premise × Nat) := do
   let env ← getEnv
   let maxUnindexedPremises ← getMaxUnindexedPremises
   let indexedPremisesFromServer ← getIndexedPremisesFromServer
@@ -115,13 +127,15 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
         unless isDeniedPremise env name do
           unindexedNames := unindexedNames.push name
 
-  if unindexedNames.size > maxUnindexedPremises then
-    logWarning m!"Found {unindexedNames.size} unindexed premises in imports, which exceeds the maximum number of new premises ({maxUnindexedPremises}). Discarding premises beyond this limit"
-    unindexedNames := unindexedNames.extract (unindexedNames.size - maxUnindexedPremises)
+  let numUnindexedImportedPremises := unindexedNames.size
+  if numUnindexedImportedPremises > maxUnindexedPremises then
+    -- We may already truncate here, because only the last `maxUnindexedPremises` premises
+    -- might possibly be included.
+    unindexedNames := unindexedNames.drop (numUnindexedImportedPremises - maxUnindexedPremises)
   -- `useCache := false` because the `Premise`s are cached using our `unindexedImportedPremisesRef`
   let unindexedPremises ← Premise.fromNames unindexedNames chunkSize false
 
-  return (indexedIdxs, unindexedPremises)
+  return (indexedIdxs, unindexedPremises, numUnindexedImportedPremises)
 
 /-- Get the imported premises that are indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted. -/
@@ -137,11 +151,22 @@ def getIndexedImportedPremises (chunkSize := 256) : CoreM (Array Nat) := do
 because (assuming the server is static) the result will not change unless the file is restarted. -/
 def getUnindexedImportedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   match ← unindexedImportedPremisesRef.get with
-  | some premises => return premises
+  | some (premises, _) => return premises
   | none =>
-    let (_, premises) ← Cloud.getImportedPremisesCore chunkSize
-    unindexedImportedPremisesRef.set (some premises)
+    let (_, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+    unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
     return premises
+
+/-- Get the number of imported premises not indexed by the server. The result is cached in an `IO.Ref`,
+because (assuming the server is static) the result will not change unless the file is restarted.
+This number is used only for printing a warning message. -/
+def getNumUnindexedImportedPremises (chunkSize := 256) : CoreM Nat := do
+  match ← unindexedImportedPremisesRef.get with
+  | some (_, numUnindexedImportedPremises) => return numUnindexedImportedPremises
+  | none =>
+    let (_, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+    unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
+    return numUnindexedImportedPremises
 
 /-- Get the local premises defined in the current file that are indexed by the server.
 Modifications to these premises will *not* be reflected in the retrieval results, with
@@ -179,12 +204,19 @@ def getUnindexedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let maxUnindexedPremises ← getMaxUnindexedPremises
   let premises₁ ← getUnindexedImportedPremises chunkSize
   let premises₂ ← getUnindexedLocalPremises chunkSize
+
+  -- This is the true number of unindexed premises in the environment (imported and local).
+  -- This may be higher than `(premises₁ ++ premises₂).size`, because
+  -- `getUnindexedImportedPremises` already optimizes away the unnecessary pretty-printing
+  -- for unindexed imported premises beyond the limit.
+  let numUnindexedPremises := (← getNumUnindexedImportedPremises chunkSize) + premises₂.size
+  if numUnindexedPremises > maxUnindexedPremises then
+    logWarning m!"Found {numUnindexedPremises} unindexed premises in the environment, which exceeds the maximum number of new premises ({maxUnindexedPremises}). Discarding premises beyond this limit"
+
+  -- Truncate to the last `maxUnindexedPremises` premises
   let mut premises := premises₁ ++ premises₂
-  if premises.size > maxUnindexedPremises then
-    -- This log message is not accurate because premises₁ is already truncated
-    -- logWarning m!"Found {premises.size} unindexed premises in the environment, which exceeds the maximum number of new premises ({maxUnindexedPremises}). Discarding premises beyond this limit"
-    premises := premises.extract (premises.size - maxUnindexedPremises)
-  return premises.extract (premises.size - maxUnindexedPremises) premises.size
+  premises := premises.drop (premises.size - maxUnindexedPremises)
+  return premises
 
 /-- Returns indexed premises defined in the environment, from both imported and local premises. -/
 def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do
