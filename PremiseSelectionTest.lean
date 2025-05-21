@@ -127,7 +127,11 @@ section Generated
 
 /-! Generate 1000 theorems -/
 
-#eval show Elab.Command.CommandElabM _ from do
+example : 4882 = 4882 := by
+  suggest_premises  -- should not retrieve `Generated.*`
+  rfl
+
+run_cmd
   for i in [0:1000] do
     let name : Name := .str (.str .anonymous "Generated") s!"theorem{i}"
     Elab.Command.elabCommand (← `(command| theorem $(mkIdent name) : $(Syntax.mkNatLit i) = $(Syntax.mkNatLit i) := rfl))
@@ -140,8 +144,16 @@ end Generated
   assert! 1000 <= premises.size && premises.size < 2000
   return premises
 
--- This makes the server OOM if not for maxUnindexedPremises
+-- These test `maxUnindexedPremises`
+
 example : 4882 = 4882 := by
+  suggest_premises
+  rfl
+
+set_option premiseSelection.maxUnindexedPremises 1000 in
+example : 4882 = 4882 := by
+  -- expect two warnings
+  suggest_premises
   suggest_premises
   rfl
 
