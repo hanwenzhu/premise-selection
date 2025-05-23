@@ -12,7 +12,7 @@ open Cloud
 theorem Nat.add_eq_add_swap (a b : Nat) : a + b = b + a := Nat.add_comm ..
 theorem Nat.add_comm' (a b : Nat) : a + b = b + a := Nat.add_comm ..
 theorem add_comm_nat (a b : Nat) : a + b = b + a := Nat.add_comm ..
-theorem add_comm (a b : Nat) : a + b = b + a := Nat.add_comm ..
+theorem add_comm (a b : Nat) : a + b = b + a := Nat.add_comm ..  -- this coincides with another theorem in mathlib, so (as a current implementation feature) the behavior is undefined
 theorem Nat.add.comm (a b : Nat) : a + b = b + a := Nat.add_comm ..
 
 set_premise_selector premiseSelector

@@ -34,7 +34,7 @@ def makeRequest {α : Type _} [FromJson α] (method urlPath : String) (data? : O
     ]
   curlArgs := curlArgs.push apiUrl
 
-  trace[premiseSelection.cloud.debug] m!"Making a {method} request to {urlPath} with data {data?}"
+  trace[premiseSelection.cloud.debug] "Making a {method} request to {urlPath} with data {data?}"
 
   let output : IO.Process.Output ← id <| do
     if let some data := data? then
@@ -266,7 +266,7 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   -- let env ← getEnv
   let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ Meta.ppGoal goal
   let state := state.pretty
-  trace[premiseSelection.debug] m!"State: {state}"
+  trace[premiseSelection.debug] "State: {state}"
 
   let indexedPremises ← getIndexedPremises
   let unindexedPremises ← getUnindexedPremises
@@ -274,7 +274,7 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do
     selectPremisesCore state indexedPremises unindexedPremises k
 
-  trace[premiseSelection.debug] m!"Suggestions: {suggestions}"
+  trace[premiseSelection.debug] "Suggestions: {suggestions}"
   return suggestions
 
 def premiseSelector : Selector := fun goal config => do
