@@ -19,11 +19,11 @@ example (a b : Nat) : a + b = b + a := by
 
 The premise selector extends the `Lean.PremiseSelection` API introduced in Lean 4 core.
 
-It is developed as part of LeanHammer (TODO: link), which uses a premise selector.
+It is developed as part of [LeanHammer](https://github.com/JOSHCLUNE/LeanHammer), which uses the cloud-based premise selector.
 
 ## Overview
 
-The premise selection server runs on the code at [lean-premise-server](https://github.com/hanwenzhu/lean-premise-server).
+The premise selection server backend runs a selector model on from Mathlib, Batteries, and Lean core.
 It uses an encoder-only transformer to embed premises and the goal state, and retrieves
 the top-`k` premises by cosine similarity.
 
@@ -100,3 +100,14 @@ lake test
 ```
 
 This code, as of commit `bdf852`, is tested on Lean versions `v4.18.0` to `v4.20.0-rc5`.
+
+## Links
+
+* Cloud backend:
+  * [Server](https://github.com/hanwenzhu/lean-premise-server)
+  * [Model training](https://github.com/hanwenzhu/LeanHammer-training)
+  * [Data extraction](https://github.com/cmu-l3/ntp-toolkit/tree/hammer)
+  * [Model weights](https://huggingface.co/hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5) (subject to change)
+  * [Extracted dataset](https://huggingface.co/datasets/l3lab/lean-premises)
+* LeanHammer:
+  * [GitHub repo](https://github.com/JOSHCLUNE/LeanHammer)
