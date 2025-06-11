@@ -100,7 +100,7 @@ section Premise
 
 /--
 info: { name := `Nat.add,
-  decl := "/-- Addition of natural numbers.\n\nThis definition is overridden in both the kernel and the compiler to efficiently\nevaluate using the \"bignum\" representation (see `Nat`). The definition provided\nhere is the logical model (and it is soundness-critical that they coincide).\n -/\ndef Nat.add : Nat → Nat → Nat" }
+  decl := "/-- Addition of natural numbers, typically used via the `+` operator.\n\nThis function is overridden in both the kernel and the compiler to efficiently evaluate using the\narbitrary-precision arithmetic library. The definition provided here is the logical model.\n -/\ndef Nat.add : Nat → Nat → Nat" }
 -/
 #guard_msgs in #eval Premise.fromName ``Nat.add false
 
