@@ -48,7 +48,7 @@ end ServerSideCache
 
 #time
 example (a b : Nat) : a + b = b + a := by
-  suggest_premises
+  premises
   apply Nat.add_comm
 
 -- The output is nonsense if no imported module and local premise information is provided
