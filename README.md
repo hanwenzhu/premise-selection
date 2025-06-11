@@ -9,12 +9,10 @@ To use the selector:
 ```lean
 import PremiseSelection
 
-set_premise_selector Lean.PremiseSelection.Cloud.premiseSelector
-
 theorem add_comm_nat (a b : Nat) : a + b = b + a := Nat.add_comm ..
 
 example (a b : Nat) : a + b = b + a := by
-  suggest_premises  -- prints premises including `add_comm_nat` and `Nat.add_comm`
+  premises  -- prints premises including `add_comm_nat` and `Nat.add_comm`
 ```
 
 The premise selector extends the `Lean.PremiseSelection` API introduced in Lean 4 core.
@@ -44,7 +42,7 @@ set_option premiseSelection.apiBaseUrl "http://my_api_url"
 
 ## Run time
 
-The first call to premise selection (by `hammer` or by `suggest_premises`) may be much slower
+The first call to premise selection (by `hammer` or by `premises`) may be much slower
 than subsequent calls, due to caching.
 One should expect the first call in any file session (especially in a downstream project of Mathlib,
 such as FLT) to be up to 10–20 seconds.
@@ -99,7 +97,7 @@ To test the selectors:
 lake test
 ```
 
-This code, as of commit `bdf852`, is tested on Lean versions `v4.18.0` to `v4.20.0-rc5`.
+This code, as of commit `bdf852`, is tested on Lean versions `v4.18.0` to `v4.20.0`.
 
 ## Links
 
