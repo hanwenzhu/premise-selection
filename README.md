@@ -64,7 +64,7 @@ To optimize for run time, the cloud premise selector has three distinct layers o
   (This LRU cache is used only for performance purposes, and is not tied to user identity.)
   Since this is on the server side, the cache serves all users.
 * The third layer is during server initialization: the server pre-computes the embeddings of
-  all premises in tagged versions of Lean core, batteries, and mathlib.
+  all premises in a tagged version of Lean core, batteries, and mathlib.
 
 ## Combinators
 
