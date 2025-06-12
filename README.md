@@ -99,13 +99,26 @@ lake test
 
 This code, as of commit `bdf852`, is tested on Lean versions `v4.18.0` to `v4.20.0`.
 
-## Links
+## Citation and Resources
 
-* Cloud backend:
-  * [Server](https://github.com/hanwenzhu/lean-premise-server)
-  * [Model training](https://github.com/hanwenzhu/LeanHammer-training)
-  * [Data extraction](https://github.com/cmu-l3/ntp-toolkit/tree/hammer)
-  * [Model weights](https://huggingface.co/hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5) (subject to change)
-  * [Extracted dataset](https://huggingface.co/datasets/l3lab/lean-premises)
-* LeanHammer:
-  * [GitHub repo](https://github.com/JOSHCLUNE/LeanHammer)
+The premise selector is developed by Thomas Zhu, Joshua Clune, Jeremy Avigad, Albert Jiang, and Sean Welleck, and described in our paper [*Premise Selection for a Lean Hammer*](https://arxiv.org/abs/2506.07477).
+
+Links to open-source components of this project:
+
+* [Server](https://github.com/hanwenzhu/lean-premise-server)
+* [Model training](https://github.com/hanwenzhu/LeanHammer-training)
+* [Data extraction](https://github.com/cmu-l3/ntp-toolkit/tree/hammer)
+* [Model weights](https://huggingface.co/hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5) (subject to change)
+* [Extracted dataset](https://huggingface.co/datasets/l3lab/lean-premises)
+* [GitHub repo](https://github.com/JOSHCLUNE/LeanHammer)
+
+Citation:
+
+```bibtex
+@article{zhu2025premise,
+  title={Premise Selection for a Lean Hammer},
+  author={Zhu, Thomas and Clune, Joshua and Avigad, Jeremy and Jiang, Albert Qiaochu and Welleck, Sean},
+  journal={arXiv preprint arXiv:2506.07477},
+  year={2025}
+}
+```
