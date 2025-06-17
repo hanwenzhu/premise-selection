@@ -34,7 +34,8 @@ more recently imported modules.
 By default, the cloud premise selector `Lean.PremiseSelection.Cloud.premiseSelector` uses
 the backend API hosted by us at `http://leanpremise.net`. To use a custom backend (e.g. in
 heavy use cases, machine learning training, or for private premises that you do not wish to
-upload to the cloud service), you may set up your own server and then specify a different URL:
+upload to the cloud service), you may [set up your own server](https://github.com/hanwenzhu/lean-premise-server)
+and then specify a different URL:
 
 ```lean
 set_option premiseSelection.apiBaseUrl "http://my_api_url"
@@ -107,10 +108,10 @@ Links to open-source components of this project:
 
 * [Server](https://github.com/hanwenzhu/lean-premise-server)
 * [Model training](https://github.com/hanwenzhu/LeanHammer-training)
+  * [Model weights](https://huggingface.co/hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne2) (subject to change)
 * [Data extraction](https://github.com/cmu-l3/ntp-toolkit/tree/hammer)
-* [Model weights](https://huggingface.co/hanwenzhu/all-distilroberta-v1-lr2e-4-bs256-nneg3-ml-ne5) (subject to change)
-* [Extracted dataset](https://huggingface.co/datasets/l3lab/lean-premises)
-* [GitHub repo](https://github.com/JOSHCLUNE/LeanHammer)
+  * [Extracted dataset](https://huggingface.co/datasets/l3lab/lean-premises)
+* [LeanHammer repo](https://github.com/JOSHCLUNE/LeanHammer)
 
 Citation:
 
