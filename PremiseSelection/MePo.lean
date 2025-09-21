@@ -20,13 +20,13 @@ open Lean
 namespace Lean.NameSet
 
 instance : Union NameSet where
-  union := fun s t => s.fold (fun t n => t.insert n) t
+  union := fun s t => s.foldl (fun t n => t.insert n) t
 
 instance : Inter NameSet where
-  inter := fun s t => s.fold (fun r n => if t.contains n then r.insert n else r) {}
+  inter := fun s t => s.foldl (fun r n => if t.contains n then r.insert n else r) {}
 
 instance : SDiff NameSet where
-  sdiff := fun s t => t.fold (fun s n => s.erase n) s
+  sdiff := fun s t => t.foldl (fun s n => s.erase n) s
 
 end Lean.NameSet
 
@@ -36,14 +36,14 @@ def symbolFrequency (env : Environment) : NameMap Nat := Id.run do
   let mut map := {}
   for (_, ci) in env.constants do
     for n' in ci.type.getUsedConstantsAsSet do
-      map := map.insert n' (map.findD n' 0 + 1)
+      map := map.insert n' (map.getD n' 0 + 1)
   return map
 
 def weightedScore (weight : Name → Float) (relevant candidate : NameSet) : Float :=
   let S := candidate
   let R := relevant ∩ S
   let R' := S \ R
-  let M := R.fold (fun acc n => acc + weight n) 0
+  let M := R.foldl (fun acc n => acc + weight n) 0
   M / (M + R'.size.toFloat)
 
 -- This function is taken from the MePo paper and needs to be tuned.
@@ -90,7 +90,7 @@ def mepoSelector (useRarity : Bool) (p : Float := 0.6) (c : Float := 2.4) : Sele
   let env ← getEnv
   let score := if useRarity then
     let frequency := symbolFrequency env
-    frequencyScore (frequency.findD · 0)
+    frequencyScore (frequency.getD · 0)
   else
     unweightedScore
   let accept := fun ci => do

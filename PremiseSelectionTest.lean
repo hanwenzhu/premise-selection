@@ -172,7 +172,7 @@ open MePo
 def mepoP := 0.6
 def mepoC := 0.9
 
-set_premise_selector mepoSelector (useRarity := true) (p := mepoP) (c := mepoC)
+set_premise_selector mepoSelector (useRarity := false) (p := mepoP) (c := mepoC)
 
 example (a b : Nat) : a + b = b + a := by
   suggest_premises
@@ -211,7 +211,7 @@ example (a b : Nat) : a + b = b + a := by
 
 set_premise_selector interleave #[
   Cloud.premiseSelector,
-  mepoSelector (useRarity := true) (p := mepoP) (c := mepoC),
+  mepoSelector (useRarity := false) (p := mepoP) (c := mepoC),
   empty
 ]
 

@@ -77,7 +77,7 @@ open Lean PremiseSelection
 -- Tries the cloud premise selector. If it doesn't work (e.g. network error), use MePo instead.
 set_premise_selector
   Cloud.premiseSelector
-  <|> mepoSelector (useRarity := true)
+  <|> mepoSelector (useRarity := false)
 
 /-! `interleave` combinator -/
 
@@ -86,7 +86,7 @@ set_premise_selector
 -- This is inspired by Isabelle Sledgehammer's MeSh.
 set_premise_selector interleave #[
   Cloud.premiseSelector,
-  mepoSelector (useRarity := true) (p := mepoP) (c := mepoC)
+  mepoSelector (useRarity := false) (p := mepoP) (c := mepoC)
 ]
 ```
 
@@ -97,8 +97,6 @@ To test the selectors:
 ```lean
 lake test
 ```
-
-This code, as of commit `bdf852`, is tested on Lean versions `v4.18.0` to `v4.20.0`.
 
 ## Citation and Resources
 
