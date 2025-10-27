@@ -278,7 +278,7 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   return suggestions
 
 def premiseSelector : Selector := fun goal config => do
-  let premises ← selectPremises goal (config.maxSuggestions.getD 32)
+  let premises ← selectPremises goal config.maxSuggestions
   premises.filterM fun suggestion => config.filter suggestion.name
 
 end Lean.PremiseSelection.Cloud

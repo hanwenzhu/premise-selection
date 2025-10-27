@@ -1,7 +1,7 @@
 /-
 Getting new user-defined premises in an environment
 -/
-import PremiseSelection.Basic
+import Lean.PremiseSelection.Basic
 
 open Lean Core
 
