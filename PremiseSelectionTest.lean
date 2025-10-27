@@ -16,6 +16,8 @@ theorem add_comm (a b : Nat) : a + b = b + a := Nat.add_comm ..  -- this coincid
 theorem Nat.add.comm (a b : Nat) : a + b = b + a := Nat.add_comm ..
 
 set_premise_selector premiseSelector
+
+-- This is not actually needed
 set_option premiseSelection.apiBaseUrl "http://leanpremise.net"
 
 section Profiling
@@ -62,7 +64,7 @@ example (a b : Nat) : a + b = b + a := by
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[← Premise.fromName ``Nat.add.comm false] 2
 
 elab "simp_all_premises" k:num : tactic => do
-  let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions := k.getNat }
+  let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions? := k.getNat }
   let simpLemmas : Array (TSyntax `Lean.Parser.Tactic.simpLemma) ←
     suggestions.mapM fun suggestion => do
       let name := mkIdent suggestion.name
