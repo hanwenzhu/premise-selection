@@ -1,6 +1,5 @@
 import PremiseSelection.Cloud
 import PremiseSelection.Combinators
-import PremiseSelection.MePo
 
 namespace Lean.PremiseSelection.Tactic
 
@@ -15,7 +14,7 @@ open Elab Tactic in
   let defaultSelector := Cloud.premiseSelector <|> mepoSelector (useRarity := true) (p := 0.6) (c := 0.9)
   let selector := selector.getD defaultSelector
   let mut config : Config :=
-    { maxSuggestions := k?.map (·.getNat)
+    { maxSuggestions? := k?.map (·.getNat)
       caller := `premises }
   liftMetaTactic1 fun mvarId => do
     let suggestions ← selector mvarId config
