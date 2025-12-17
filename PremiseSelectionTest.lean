@@ -1,7 +1,7 @@
 import PremiseSelection
 import Lean
 
-open Lean PremiseSelection
+open Lean LibrarySuggestions
 
 set_option trace.premiseSelection.debug true
 
@@ -15,7 +15,7 @@ theorem add_comm_nat (a b : Nat) : a + b = b + a := Nat.add_comm ..
 theorem add_comm (a b : Nat) : a + b = b + a := Nat.add_comm ..  -- this coincides with another theorem in mathlib, so (as a current implementation feature) the behavior is undefined
 theorem Nat.add.comm (a b : Nat) : a + b = b + a := Nat.add_comm ..
 
-set_premise_selector premiseSelector
+set_library_suggestions Cloud.premiseSelector
 
 -- This is not actually needed
 set_option premiseSelection.apiBaseUrl "http://leanpremise.net"
@@ -38,12 +38,12 @@ section ServerSideCache
 
 #time  -- first server call
 example : True := by
-  suggest_premises
+  premises
   trivial
 
 #time  -- second server call (to test server-side caching; need a freshly started server)
 example : True := by
-  suggest_premises
+  premises
   trivial
 
 end ServerSideCache
@@ -64,7 +64,7 @@ example (a b : Nat) : a + b = b + a := by
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[← Premise.fromName ``Nat.add.comm false] 2
 
 elab "simp_all_premises" k:num : tactic => do
-  let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions? := k.getNat }
+  let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions := k.getNat }
   let simpLemmas : Array (TSyntax `Lean.Parser.Tactic.simpLemma) ←
     suggestions.mapM fun suggestion => do
       let name := mkIdent suggestion.name
@@ -130,7 +130,7 @@ section Generated
 /-! Generate 1000 theorems -/
 
 example : 4882 = 4882 := by
-  suggest_premises  -- should not retrieve `Generated.*`
+  premises  -- should not retrieve `Generated.*`
   rfl
 
 run_cmd
@@ -149,14 +149,14 @@ end Generated
 -- These test `maxUnindexedPremises`
 
 example : 4882 = 4882 := by
-  suggest_premises
+  premises
   rfl
 
 set_option premiseSelection.maxUnindexedPremises 1000 in
 example : 4882 = 4882 := by
   -- expect two warnings
-  suggest_premises
-  suggest_premises
+  premises
+  premises
   rfl
 
 -- Stress test
@@ -174,10 +174,10 @@ open MePo
 def mepoP := 0.6
 def mepoC := 0.9
 
-set_premise_selector mepoSelector (useRarity := false) (p := mepoP) (c := mepoC)
+set_library_suggestions mepoSelector (useRarity := false) (p := mepoP) (c := mepoC)
 
 example (a b : Nat) : a + b = b + a := by
-  suggest_premises
+  premises
   simp_all_premises 16
 
 end MePo
@@ -186,19 +186,17 @@ section Combinators
 
 /-! `orElse` -/
 
-set_premise_selector
+set_library_suggestions
   Cloud.premiseSelector
   <|> empty
 
 /--
-warning: Lean.PremiseSelection.orElse: Premise selector failed with error:
+warning: Lean.LibrarySuggestions.orElse: Premise selector failed with error:
 Could not send API request to --malformed-url/max-new-premises. curl exited with code 2:
 curl: option --malformed-url/max-new-premises: is unknown
 curl: try 'curl --help' or 'curl --manual' for more information
 
 Trying the alternative selector.
----
-info: Premise suggestions: []
 ---
 trace: [premiseSelection.debug] State: a b : Nat
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)
@@ -206,12 +204,12 @@ trace: [premiseSelection.debug] State: a b : Nat
 #guard_msgs in
 set_option premiseSelection.apiBaseUrl "--malformed-url" in
 example (a b : Nat) : a + b = b + a := by
-  suggest_premises
+  premises
   apply Nat.add_comm
 
 /-! `interleave` -/
 
-set_premise_selector interleave #[
+set_library_suggestions interleave #[
   Cloud.premiseSelector,
   mepoSelector (useRarity := false) (p := mepoP) (c := mepoC),
   empty
@@ -219,7 +217,7 @@ set_premise_selector interleave #[
 
 /-- Manually check this is the interleave of cloud & MePo results -/
 example (a b : Nat) : a + b = b + a := by
-  suggest_premises
+  premises
   apply Nat.add_comm
 
 end Combinators
