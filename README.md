@@ -72,12 +72,12 @@ To optimize for run time, the cloud premise selector has three distinct layers o
 This repository also provides *premise selector combinators*:
 
 ```lean
-open Lean PremiseSelection
+open Lean LibrarySuggestions
 
 /-! `orElse` combinator -/
 
 -- Tries the cloud premise selector. If it doesn't work (e.g. network error), use MePo instead.
-set_premise_selector
+set_library_suggestions
   Cloud.premiseSelector
   <|> mepoSelector (useRarity := false)
 
@@ -86,7 +86,7 @@ set_premise_selector
 -- Retrieves `k` premises from the cloud, `k` from MePo, interleaves them by rank,
 -- and takes the top-`k` deduplicated premises.
 -- This is inspired by Isabelle Sledgehammer's MeSh.
-set_premise_selector interleave #[
+set_library_suggestions interleave #[
   Cloud.premiseSelector,
   mepoSelector (useRarity := false) (p := mepoP) (c := mepoC)
 ]
