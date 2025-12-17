@@ -1,6 +1,6 @@
 # premise-selection
 
-This repository provides a cloud-based Lean premise selector, `Lean.PremiseSelection.Cloud.premiseSelector`.
+This repository provides a cloud-based Lean premise selector, `Lean.LibrarySuggestions.Cloud.premiseSelector`.
 It sends the current goal state and any new user-defined premises (in current file or imported)
 to a cloud server, and returns the top `k` premises recommended by the server.
 
@@ -9,13 +9,15 @@ To use the selector:
 ```lean
 import PremiseSelection
 
+set_library_suggestions open Lean.LibrarySuggestions in Cloud.premiseSelector <|> sineQuaNonSelector.intersperse currentFile
+
 theorem add_comm_nat (a b : Nat) : a + b = b + a := Nat.add_comm ..
 
 example (a b : Nat) : a + b = b + a := by
   premises  -- prints premises including `add_comm_nat` and `Nat.add_comm`
 ```
 
-The premise selector extends the `Lean.PremiseSelection` API introduced in Lean 4 core.
+The premise selector extends the `Lean.LibrarySuggestions` API introduced in Lean 4 core.
 
 It is developed as part of [LeanHammer](https://github.com/JOSHCLUNE/LeanHammer), which uses the cloud-based premise selector.
 
@@ -31,7 +33,7 @@ A warning will be issued if this limit is surpassed, and extra new premises are 
 This truncation prioritizes the new premises in the current module, and then premises in
 more recently imported modules.
 
-By default, the cloud premise selector `Lean.PremiseSelection.Cloud.premiseSelector` uses
+By default, the cloud premise selector `Lean.LibrarySuggestions.Cloud.premiseSelector` uses
 the backend API hosted by us at `http://leanpremise.net`. To use a custom backend (e.g. in
 heavy use cases, machine learning training, or for private premises that you do not wish to
 upload to the cloud service), you may [set up your own server](https://github.com/hanwenzhu/lean-premise-server)

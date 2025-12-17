@@ -2,16 +2,16 @@
 Combinators that combine two premise selectors
 -/
 
-import Lean.PremiseSelection
+import Lean.LibrarySuggestions
 
-namespace Lean.PremiseSelection
+namespace Lean.LibrarySuggestions
 
 /-- Try the first premise selector. If it throws an error, try the second one. -/
 def orElse (s₁ : Selector) (s₂ : Unit → Selector) : Selector := fun g config => do
   try
     s₁ g config
   catch e =>
-    logWarning m!"Lean.PremiseSelection.orElse: Premise selector failed with error:
+    logWarning m!"Lean.LibrarySuggestions.orElse: Premise selector failed with error:
 {e.toMessageData}
 Trying the alternative selector."
     s₂ () g config
@@ -40,4 +40,4 @@ def interleave (selectors : Array Selector) : Selector := fun g config => do
             return suggestions
   return suggestions
 
-end Lean.PremiseSelection
+end Lean.LibrarySuggestions

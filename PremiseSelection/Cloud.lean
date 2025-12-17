@@ -1,8 +1,8 @@
-import Lean.PremiseSelection
+import Lean.LibrarySuggestions
 import Lean.Server.Utils
 import PremiseSelection.Premise
 
-namespace Lean.PremiseSelection.Cloud
+namespace Lean.LibrarySuggestions.Cloud
 
 register_option premiseSelection.apiBaseUrl : String := {
   defValue := "http://leanpremise.net"
@@ -281,4 +281,4 @@ def premiseSelector : Selector := fun goal config => do
   let premises ← selectPremises goal config.maxSuggestions
   premises.filterM fun suggestion => config.filter suggestion.name
 
-end Lean.PremiseSelection.Cloud
+end Lean.LibrarySuggestions.Cloud

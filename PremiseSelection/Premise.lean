@@ -1,11 +1,11 @@
 /-
 Getting new user-defined premises in an environment
 -/
-import Lean.PremiseSelection.Basic
+import Lean.LibrarySuggestions.Basic
 
 open Lean Core
 
-namespace Lean.PremiseSelection
+namespace Lean.LibrarySuggestions
 
 /-!
 Here we define mechanisms that send new user-defined premises to the server.
@@ -171,4 +171,4 @@ run_cmd
   for typePrefix in #[`Lean] do
     modifyEnv fun env => typePrefixDenyListExt.addEntry env typePrefix
 
-end Lean.PremiseSelection.Premise
+end Lean.LibrarySuggestions.Premise
