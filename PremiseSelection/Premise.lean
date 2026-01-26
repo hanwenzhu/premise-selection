@@ -83,7 +83,7 @@ def fromNameCore (name : Name) : CoreM Premise := do
       -- Format declaration into `decl`
       let mut decl := ""
       if let some doc := doc? then
-        decl := decl ++ "/-- " ++ doc.stripSuffix " " ++ " -/\n"
+        decl := decl ++ "/-- " ++ doc.dropSuffix " " ++ " -/\n"
       decl := decl ++ kind ++ " "
       decl := decl ++ fmt.pretty 1000000000
 
