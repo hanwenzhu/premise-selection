@@ -194,7 +194,7 @@ set_library_suggestions
 warning: Lean.LibrarySuggestions.orElse: Premise selector failed with error:
 Could not send API request to --malformed-url/max-new-premises. curl exited with code 2:
 curl: option --malformed-url/max-new-premises: is unknown
-curl: try 'curl --help' or 'curl --manual' for more information
+curl: try 'curl --help' for more information
 
 Trying the alternative selector.
 ---
