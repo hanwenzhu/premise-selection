@@ -17,7 +17,9 @@ register_option premiseSelection.maxUnindexedPremises : Nat := {
 def getApiBaseUrl (opts : Options) : String :=
   premiseSelection.apiBaseUrl.get opts
 
-initialize Lean.registerTraceClass `premiseSelection.cloud.debug
+initialize
+  Lean.registerTraceClass `premiseSelection.cloud.debug
+  Lean.registerTraceClass `premiseSelection.cloud.profiling
 
 def makeRequest {α : Type _} [FromJson α] (method urlPath : String) (data? : Option Json) : CoreM α := do
   let apiBaseUrl := getApiBaseUrl (← getOptions)
@@ -83,11 +85,17 @@ initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.m
 /-- Unfiltered list of all premises known by the server, as a mapping from name to index.
 The result is cached in an `IO.Ref`, because (assuming the server is static) the result will not change. -/
 def getIndexedPremisesFromServer : CoreM (NameMap Nat) := do
+  let getIndexedPremisesFromServerStart ← IO.monoMsNow
   match ← indexedPremisesFromServerRef.get with
-  | some map => return map
+  | some map =>
+    trace[premiseSelection.debug] "{decl_name%} :: cache hit"
+    trace[premiseSelection.cloud.profiling] "{decl_name%} run time {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
+    return map
   | none =>
     let map ← core
     indexedPremisesFromServerRef.set (some map)
+    trace[premiseSelection.debug] "{decl_name%} :: cache miss"
+    trace[premiseSelection.cloud.profiling] "{decl_name%} run time {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
     return map
 where
   core : CoreM (NameMap Nat) := do
@@ -107,6 +115,7 @@ initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise × Nat))
 /-- Get imported premises, separated by whether they are indexed by the server,
 and a number indicating the true number of unindexed imported premises. -/
 protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × Array Premise × Nat) := do
+  let getImportedPremisesCoreStart ← IO.monoMsNow
   let env ← getEnv
   let maxUnindexedPremises ← getMaxUnindexedPremises
   let indexedPremisesFromServer ← getIndexedPremisesFromServer
@@ -135,6 +144,7 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
   -- `useCache := false` because the `Premise`s are cached using our `unindexedImportedPremisesRef`
   let unindexedPremises ← Premise.fromNames unindexedNames chunkSize false
 
+  trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getImportedPremisesCoreStart}ms"
   return (indexedIdxs, unindexedPremises, numUnindexedImportedPremises)
 
 /-- Get the imported premises that are indexed by the server. The result is cached in an `IO.Ref`,
@@ -263,17 +273,24 @@ def selectPremisesCore (state : String)
   makeRequest "POST" "/retrieve" (some data)
 
 def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
-  -- let env ← getEnv
+  let start ← IO.monoMsNow
   let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ Meta.ppGoal goal
   let state := state.pretty
+  trace[premiseSelection.cloud.profiling] "Time to produce state: {(← IO.monoMsNow) - start}ms"
   trace[premiseSelection.debug] "State: {state}"
 
+  let indexedAndUnindexedPremisesStart ← IO.monoMsNow
   let indexedPremises ← getIndexedPremises
+  trace[premiseSelection.cloud.profiling] "Time to get just indexed premises: {(← IO.monoMsNow) - indexedAndUnindexedPremisesStart}ms"
   let unindexedPremises ← getUnindexedPremises
+  trace[premiseSelection.cloud.profiling] "Time to get indexed and unindexed premises: {(← IO.monoMsNow) - indexedAndUnindexedPremisesStart}ms"
 
+  let selectPremiseCoreStart ← IO.monoMsNow
   let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do
     selectPremisesCore state indexedPremises unindexedPremises k
+  trace[premiseSelection.cloud.profiling] "Time to call selectPremisesCore: {(← IO.monoMsNow) - selectPremiseCoreStart}ms"
 
+  trace[premiseSelection.cloud.profiling] "Total premise selection runtime: {(← IO.monoMsNow) - start}ms"
   trace[premiseSelection.debug] "Suggestions: {suggestions}"
   return suggestions
 
