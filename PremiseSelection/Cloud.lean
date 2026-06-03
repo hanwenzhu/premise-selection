@@ -19,6 +19,7 @@ def getApiBaseUrl (opts : Options) : String :=
 
 initialize
   Lean.registerTraceClass `premiseSelection.cloud.debug
+  Lean.registerTraceClass `premiseSelection.cloud.debug.full
   Lean.registerTraceClass `premiseSelection.cloud.profiling
 
 def makeRequest {α : Type _} [FromJson α] (method urlPath : String) (data? : Option Json) : CoreM α := do
@@ -36,14 +37,17 @@ def makeRequest {α : Type _} [FromJson α] (method urlPath : String) (data? : O
     ]
   curlArgs := curlArgs.push apiUrl
 
-  trace[premiseSelection.cloud.debug] "Making a {method} request to {urlPath} with data {data?}"
+  trace[premiseSelection.cloud.debug] "Making a {method} request to {urlPath}"
+  trace[premiseSelection.cloud.debug.full] "Making a {method} request to {urlPath} with data {data?}"
 
   let output : IO.Process.Output ← id <| do
     if let some data := data? then
+      let curlSpawnStart ← IO.monoMsNow
       let childInit ← IO.Process.spawn { cmd := "curl", args := curlArgs, stdin := .piped, stdout := .piped, stderr := .piped }
       let (stdin, child) ← childInit.takeStdin
       stdin.putStr data.compress
       let exitCode ← child.wait
+      trace[premiseSelection.cloud.profiling] "{decl_name%} :: curl process run time: {(← IO.monoMsNow) - curlSpawnStart}ms"
       let stdout ← child.stdout.readToEnd
       let stderr ← child.stderr.readToEnd
       return { exitCode, stdout, stderr }
@@ -55,11 +59,13 @@ def makeRequest {α : Type _} [FromJson α] (method urlPath : String) (data? : O
       s!"Could not send API request to {apiUrl}. " ++
       s!"curl exited with code {output.exitCode}:\n{output.stderr}"
 
+  let parseOutputStart ← IO.monoMsNow
   match Json.parse output.stdout >>= fromJson? with
   | .ok (result : α) =>
-      return result
-  | .error e => IO.throwServerError <|
-      s!"Could not parse server output (error: {e})\nRaw output:\n{output.stdout}"
+    trace[premiseSelection.cloud.profiling] "{decl_name%} :: time to parse curl output: {(← IO.monoMsNow) - parseOutputStart}ms"
+    return result
+  | .error e =>
+    IO.throwServerError $ s!"Could not parse server output (error: {e})\nRaw output:\n{output.stdout}"
 
 section IndexedPremises
 
@@ -74,11 +80,19 @@ Indexed premises are represented by a `Nat` (index in `getIndexedPremisesFromSer
 Unindexed premises are represented as a `Premise` (name and signature).
 -/
 
+/-- A cache holding the maximum number of new premises to send to the server. -/
+initialize maxUnindexedPremises : IO.Ref (Option Nat) ← IO.mkRef none
+
 /-- The maximum number of new premises to send to the server. -/
 def getMaxUnindexedPremises : CoreM Nat := do
-  let serverMaxNewPremises ← makeRequest "GET" "/max-new-premises" none
-  let userMaxNewPremises := premiseSelection.maxUnindexedPremises.get (← getOptions)
-  return min serverMaxNewPremises userMaxNewPremises
+  match ← maxUnindexedPremises.get with
+  | some max => return max
+  | none =>
+    let serverMaxNewPremises ← makeRequest "GET" "/max-new-premises" none
+    let userMaxNewPremises := premiseSelection.maxUnindexedPremises.get (← getOptions)
+    let res := min serverMaxNewPremises userMaxNewPremises
+    maxUnindexedPremises.set res
+    return res
 
 /-- A cache holding indexed premises by the server. -/
 initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
@@ -89,17 +103,19 @@ def getIndexedPremisesFromServer : CoreM (NameMap Nat) := do
   match ← indexedPremisesFromServerRef.get with
   | some map =>
     trace[premiseSelection.debug] "{decl_name%} :: cache hit"
-    trace[premiseSelection.cloud.profiling] "{decl_name%} run time {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
+    trace[premiseSelection.cloud.profiling] "{decl_name%} cache hit run time {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
     return map
   | none =>
-    let map ← core
+    let map ← core getIndexedPremisesFromServerStart
     indexedPremisesFromServerRef.set (some map)
     trace[premiseSelection.debug] "{decl_name%} :: cache miss"
-    trace[premiseSelection.cloud.profiling] "{decl_name%} run time {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
+    trace[premiseSelection.cloud.profiling] "{decl_name%} cache miss run time {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
     return map
 where
-  core : CoreM (NameMap Nat) := do
+  core (getIndexedPremisesFromServerStart : Nat) : CoreM (NameMap Nat) := do
     let names : Array String ← makeRequest "GET" "/indexed-premises" none
+    trace[premiseSelection.cloud.profiling]
+      "{decl_name%} :: Time to make GET /indexed-premises request result: {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
     return names.zipIdx.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
 
 /-- All modules known by the server. **NOTE** This is not used. -/
@@ -147,14 +163,18 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
   trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getImportedPremisesCoreStart}ms"
   return (indexedIdxs, unindexedPremises, numUnindexedImportedPremises)
 
+-- **TODO** `getIndexedImportedPremises`, `getUnindexedImportedPremises`, and `getNumUnindexedImportedPremises` should be
+-- merged into one function that shares one cache (deduplicating code)
+
 /-- Get the imported premises that are indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted. -/
 def getIndexedImportedPremises (chunkSize := 256) : CoreM (Array Nat) := do
   match ← indexedImportedPremisesRef.get with
   | some idxs => return idxs
   | none =>
-    let (idxs, _) ← Cloud.getImportedPremisesCore chunkSize
+    let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
     indexedImportedPremisesRef.set (some idxs)
+    unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
     return idxs
 
 /-- Get the imported premises not indexed by the server. The result is cached in an `IO.Ref`,
@@ -163,7 +183,8 @@ def getUnindexedImportedPremises (chunkSize := 256) : CoreM (Array Premise) := d
   match ← unindexedImportedPremisesRef.get with
   | some (premises, _) => return premises
   | none =>
-    let (_, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+    let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+    indexedImportedPremisesRef.set (some idxs)
     unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
     return premises
 
@@ -174,7 +195,8 @@ def getNumUnindexedImportedPremises (chunkSize := 256) : CoreM Nat := do
   match ← unindexedImportedPremisesRef.get with
   | some (_, numUnindexedImportedPremises) => return numUnindexedImportedPremises
   | none =>
-    let (_, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+    let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+    indexedImportedPremisesRef.set (some idxs)
     unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
     return numUnindexedImportedPremises
 
@@ -184,12 +206,14 @@ the assumption being even if modifications are made, they should be small enough
 to significantly change the semantic meaning (the name is kept after all).
 -/
 def getIndexedLocalPremises : CoreM (Array Nat) := do
+  let getIndexedLocalPremisesStart ← IO.monoMsNow
   let env ← getEnv
   let indexedPremisesFromServer ← getIndexedPremisesFromServer
   let mut idxs := #[]
   for (name, _) in env.constants.map₂ do
     if let some idx := indexedPremisesFromServer.find? name then
       idxs := idxs.push idx
+  trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getIndexedLocalPremisesStart}ms"
   return idxs
 
 /-- Returns the local premises defined in the current file that are not indexed by the server.
@@ -199,6 +223,7 @@ meaning that it does not support modifying local premises,
 but (**TODO**) this behavior might (or should) change in the future by disabling this cache.
 -/
 def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
+  let getUnindexedLocalPremisesStart ← IO.monoMsNow
   let env ← getEnv
   let indexedPremisesFromServer ← getIndexedPremisesFromServer
   let mut names := #[]
@@ -206,7 +231,9 @@ def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
     unless indexedPremisesFromServer.contains name do
       unless isDeniedPremise env name do
         names := names.push name
-  Premise.fromNames names chunkSize true -- **TODO** see docstring
+  let res ← Premise.fromNames names chunkSize true -- **TODO** see docstring
+  trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getUnindexedLocalPremisesStart}ms"
+  return res
 
 /-- Returns new unindexed premises defined in the environment, from both imported and local premises,
 truncated to the maximum number of unindexed premises allowed by the server. -/
