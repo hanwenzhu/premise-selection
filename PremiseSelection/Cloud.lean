@@ -10,8 +10,13 @@ register_option premiseSelection.apiBaseUrl : String := {
 }
 
 register_option premiseSelection.maxUnindexedPremises : Nat := {
-  defValue := 8192
+  defValue := 2048
   descr := "The maximum number of unindexed premises to send to the premise selection server. The server may also impose its own restriction on this number, so we take the minimum of this number and the server's limit."
+}
+
+register_option premiseSelection.checkMaxUnindexedPremises : Bool := {
+  defValue := false
+  descr := "An option which determines whether the server's limit on max unindexed premises is checked, or whether premiseSelection.maxUnindexedPremises is just used."
 }
 
 def getApiBaseUrl (opts : Options) : String :=
@@ -88,11 +93,15 @@ def getMaxUnindexedPremises : CoreM Nat := do
   match ← maxUnindexedPremises.get with
   | some max => return max
   | none =>
-    let serverMaxNewPremises ← makeRequest "GET" "/max-new-premises" none
     let userMaxNewPremises := premiseSelection.maxUnindexedPremises.get (← getOptions)
-    let res := min serverMaxNewPremises userMaxNewPremises
-    maxUnindexedPremises.set res
-    return res
+    if premiseSelection.checkMaxUnindexedPremises.get (← getOptions) then
+      let serverMaxNewPremises ← makeRequest "GET" "/max-new-premises" none
+      let res := min serverMaxNewPremises userMaxNewPremises
+      maxUnindexedPremises.set res
+      return res
+    else
+      maxUnindexedPremises.set userMaxNewPremises
+      return userMaxNewPremises
 
 /-- A cache holding indexed premises by the server. -/
 initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
