@@ -19,6 +19,14 @@ register_option premiseSelection.checkMaxUnindexedPremises : Bool := {
   descr := "An option which determines whether the server's limit on max unindexed premises is checked, or whether premiseSelection.maxUnindexedPremises is just used."
 }
 
+register_option premiseSelection.indexByIndividualPremise : Bool := {
+  defValue := false
+  descr :=
+    "An option which determines whether LeanPremise relays the exact set of premises that are cached/indexed by the server (true) " ++
+    "or just relays the set of files that are cached/indexed by the server (false). Setting this option to true is expected to be slower, " ++
+    "but may be better able to capture changes made to cached import files (e.g. additions made to imported Mathlib files)."
+}
+
 def getApiBaseUrl (opts : Options) : String :=
   premiseSelection.apiBaseUrl.get opts
 
@@ -106,7 +114,7 @@ def getMaxUnindexedPremises : CoreM Nat := do
 /-- A cache holding indexed premises by the server. -/
 initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
 /-- Unfiltered list of all premises known by the server, as a mapping from name to index.
-The result is cached in an `IO.Ref`, because (assuming the server is static) the result will not change. -/
+    The result is cached in an `IO.Ref`, because (assuming the server is static) the result will not change. -/
 def getIndexedPremisesFromServer : CoreM (NameMap Nat) := do
   let getIndexedPremisesFromServerStart ← IO.monoMsNow
   match ← indexedPremisesFromServerRef.get with
@@ -127,13 +135,36 @@ where
       "{decl_name%} :: Time to make GET /indexed-premises request result: {(← IO.monoMsNow) - getIndexedPremisesFromServerStart}ms"
     return names.zipIdx.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
 
-/-- All modules known by the server. **NOTE** This is not used. -/
-def getIndexedModules : CoreM NameSet := do
-  let moduleNames : Array String ← makeRequest "GET" "/indexed-modules" none
-  return moduleNames.foldl (fun ns n => ns.insert n.toName) ∅
+/-- A cache holding indexed modules by the server. -/
+initialize indexedModulesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
+
+/-- A list of all files known by the server, as a mapping from name to index.
+    The result is cached in an `IO.Ref`, because (assuming the server is static) the result will not change. -/
+def getIndexedModules : CoreM (NameMap Nat) := do
+  let getIndexedModulesFromServerStart ← IO.monoMsNow
+  match ← indexedModulesFromServerRef.get with
+  | some map =>
+    trace[premiseSelection.debug] "{decl_name%} :: cache hit"
+    trace[premiseSelection.cloud.profiling] "{decl_name%} cache hit run time {(← IO.monoMsNow) - getIndexedModulesFromServerStart}ms"
+    return map
+  | none =>
+    let map ← core getIndexedModulesFromServerStart
+    indexedModulesFromServerRef.set map
+    trace[premiseSelection.debug] "{decl_name%} :: cache miss"
+    trace[premiseSelection.cloud.profiling] "{decl_name%} cache miss run time {(← IO.monoMsNow) - getIndexedModulesFromServerStart}ms"
+    return map
+where
+  core (getIndexedModulesFromServerStart : Nat) : CoreM (NameMap Nat) := do
+    let names : Array String ← makeRequest "GET" "/indexed-modules" none
+    trace[premiseSelection.cloud.profiling]
+      "{decl_name%} :: Time to make GET /indexed-modules request result: {(← IO.monoMsNow) - getIndexedModulesFromServerStart}ms"
+    return names.zipIdx.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
 
 /-- A cache holding the premises imported from other modules that are indexed by the server. -/
 initialize indexedImportedPremisesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
+/-- A cache holding the imported modules that are indexed by the server
+    (used when `premiseSelection.indexByIndividualPremise` is `false`). -/
+initialize indexedImportedModulesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
 /-- A cache holding the premises imported from other modules that are not indexed by the server. -/
 initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise × Nat)) ← IO.mkRef none
 
@@ -172,8 +203,45 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
   trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getImportedPremisesCoreStart}ms"
   return (indexedIdxs, unindexedPremises, numUnindexedImportedPremises)
 
--- **TODO** `getIndexedImportedPremises`, `getUnindexedImportedPremises`, and `getNumUnindexedImportedPremises` should be
--- merged into one function that shares one cache (deduplicating code)
+/-- Get the imported modules that are indexed by the server, the premises of imported modules that
+are not indexed by the server, and a number indicating the true number of unindexed imported premises.
+
+This is the analogue of `Cloud.getImportedPremisesCore` used when `premiseSelection.indexByIndividualPremise`
+is `false`: rather than checking each imported premise against the server's set of indexed premises,
+each imported module is checked against the server's set of indexed modules, and all premises of an
+indexed module are assumed to be indexed by the server (so changes made to indexed modules,
+e.g. additions made to imported Mathlib files, are not captured). -/
+protected def getImportedModulesCore (chunkSize := 256) : CoreM (Array Nat × Array Premise × Nat) := do
+  let getImportedModulesCoreStart ← IO.monoMsNow
+  let env ← getEnv
+  let maxUnindexedPremises ← getMaxUnindexedPremises
+  let indexedModulesFromServer ← getIndexedModules
+  let moduleNames := env.header.moduleNames
+  let moduleData := env.header.moduleData
+
+  let mut indexedModuleIdxs := #[]
+  let mut unindexedNames := #[]
+  for i in [0:moduleData.size] do
+    let moduleName := moduleNames[i]!
+    if isDeniedModule env moduleName then
+      continue
+    if let some idx := indexedModulesFromServer.find? moduleName then
+      indexedModuleIdxs := indexedModuleIdxs.push idx
+    else
+      for name in moduleData[i]!.constNames do
+        unless isDeniedPremise env name do
+          unindexedNames := unindexedNames.push name
+
+  let numUnindexedImportedPremises := unindexedNames.size
+  if numUnindexedImportedPremises > maxUnindexedPremises then
+    -- We may already truncate here, because only the last `maxUnindexedPremises` premises
+    -- might possibly be included.
+    unindexedNames := unindexedNames.drop (numUnindexedImportedPremises - maxUnindexedPremises)
+  -- `useCache := false` because the `Premise`s are cached using our `unindexedImportedPremisesRef`
+  let unindexedPremises ← Premise.fromNames unindexedNames chunkSize false
+
+  trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getImportedModulesCoreStart}ms"
+  return (indexedModuleIdxs, unindexedPremises, numUnindexedImportedPremises)
 
 /-- Get the imported premises that are indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted. -/
@@ -186,16 +254,34 @@ def getIndexedImportedPremises (chunkSize := 256) : CoreM (Array Nat) := do
     unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
     return idxs
 
+/-- Get the imported modules that are indexed by the server (used when
+`premiseSelection.indexByIndividualPremise` is `false`). The result is cached in an `IO.Ref`,
+because (assuming the server is static) the result will not change unless the file is restarted. -/
+def getIndexedImportedModules (chunkSize := 256) : CoreM (Array Nat) := do
+  match ← indexedImportedModulesRef.get with
+  | some idxs => return idxs
+  | none =>
+    let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedModulesCore chunkSize
+    indexedImportedModulesRef.set (some idxs)
+    unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
+    return idxs
+
 /-- Get the imported premises not indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted. -/
 def getUnindexedImportedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   match ← unindexedImportedPremisesRef.get with
   | some (premises, _) => return premises
   | none =>
-    let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
-    indexedImportedPremisesRef.set (some idxs)
-    unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
-    return premises
+    if premiseSelection.indexByIndividualPremise.get (← getOptions) then
+      let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+      indexedImportedPremisesRef.set (some idxs)
+      unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
+      return premises
+    else
+      let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedModulesCore chunkSize
+      indexedImportedModulesRef.set (some idxs)
+      unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
+      return premises
 
 /-- Get the number of imported premises not indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted.
@@ -204,10 +290,16 @@ def getNumUnindexedImportedPremises (chunkSize := 256) : CoreM Nat := do
   match ← unindexedImportedPremisesRef.get with
   | some (_, numUnindexedImportedPremises) => return numUnindexedImportedPremises
   | none =>
-    let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
-    indexedImportedPremisesRef.set (some idxs)
-    unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
-    return numUnindexedImportedPremises
+    if premiseSelection.indexByIndividualPremise.get (← getOptions) then
+      let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedPremisesCore chunkSize
+      indexedImportedPremisesRef.set (some idxs)
+      unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
+      return numUnindexedImportedPremises
+    else
+      let (idxs, premises, numUnindexedImportedPremises) ← Cloud.getImportedModulesCore chunkSize
+      indexedImportedModulesRef.set (some idxs)
+      unindexedImportedPremisesRef.set (some (premises, numUnindexedImportedPremises))
+      return numUnindexedImportedPremises
 
 /-- Get the local premises defined in the current file that are indexed by the server.
 Modifications to these premises will *not* be reflected in the retrieval results, with
@@ -234,7 +326,13 @@ but (**TODO**) this behavior might (or should) change in the future by disabling
 def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let getUnindexedLocalPremisesStart ← IO.monoMsNow
   let env ← getEnv
-  let indexedPremisesFromServer ← getIndexedPremisesFromServer
+  -- When `premiseSelection.indexByIndividualPremise` is `false`, the set of premises indexed by
+  -- the server is never retrieved, so all local premises are treated as unindexed
+  let indexedPremisesFromServer ←
+    if premiseSelection.indexByIndividualPremise.get (← getOptions) then
+      getIndexedPremisesFromServer
+    else
+      pure (∅ : NameMap Nat)
   let mut names := #[]
   for (name, _) in env.constants.map₂ do
     unless indexedPremisesFromServer.contains name do
@@ -273,12 +371,17 @@ def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do
 elab "set_premise_selection_cloud_cache" : command => do
   Elab.Command.liftCoreM do
     let _ ← getUnindexedPremises
-    let _ ← getIndexedPremises
+    if premiseSelection.indexByIndividualPremise.get (← getOptions) then
+      let _ ← getIndexedPremises
+    else
+      let _ ← getIndexedImportedModules
 
 elab "clear_premise_selection_cloud_cache" : command => do
   Premise.fromNameCacheRef.set ∅
   indexedPremisesFromServerRef.set none
+  indexedModulesFromServerRef.set none
   indexedImportedPremisesRef.set none
+  indexedImportedModulesRef.set none
   unindexedImportedPremisesRef.set none
 
 end IndexedPremises
@@ -298,11 +401,12 @@ scoped instance : ToMessageData Suggestion where
 initialize Lean.registerTraceClass `premiseSelection.debug
 
 def selectPremisesCore (state : String)
-    (indexedPremises : Array Nat) (unindexedPremises : Array Premise)
+    (indexedPremises : Array Nat) (importedModules : Array Nat) (unindexedPremises : Array Premise)
     (k : Nat) : CoreM (Array Suggestion) := do
   let data := Json.mkObj [
     ("state", .str state),
     ("local_premises", toJson indexedPremises),  -- the name `local_premises` is an artifact from previous versions
+    ("imported_modules", toJson importedModules),
     ("new_premises", toJson unindexedPremises),
     ("k", .num (.fromNat k)),
   ]
@@ -316,14 +420,21 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   trace[premiseSelection.debug] "State: {state}"
 
   let indexedAndUnindexedPremisesStart ← IO.monoMsNow
-  let indexedPremises ← getIndexedPremises
+  -- When `premiseSelection.indexByIndividualPremise` is `true`, indexed premises are relayed to
+  -- the server individually (via `local_premises`); when it is `false`, only the imported modules
+  -- indexed by the server are relayed (via `imported_modules`).
+  let (indexedPremises, importedModules) ←
+    if premiseSelection.indexByIndividualPremise.get (← getOptions) then
+      pure ((← getIndexedPremises), #[])
+    else
+      pure (#[], (← getIndexedImportedModules))
   trace[premiseSelection.cloud.profiling] "Time to get just indexed premises: {(← IO.monoMsNow) - indexedAndUnindexedPremisesStart}ms"
   let unindexedPremises ← getUnindexedPremises
   trace[premiseSelection.cloud.profiling] "Time to get indexed and unindexed premises: {(← IO.monoMsNow) - indexedAndUnindexedPremisesStart}ms"
 
   let selectPremiseCoreStart ← IO.monoMsNow
   let suggestions ← profileitM Exception "Cloud.selectPremises" (← getOptions) do
-    selectPremisesCore state indexedPremises unindexedPremises k
+    selectPremisesCore state indexedPremises importedModules unindexedPremises k
   trace[premiseSelection.cloud.profiling] "Time to call selectPremisesCore: {(← IO.monoMsNow) - selectPremiseCoreStart}ms"
 
   trace[premiseSelection.cloud.profiling] "Total premise selection runtime: {(← IO.monoMsNow) - start}ms"
