@@ -57,11 +57,11 @@ example (a b : Nat) : a + b = b + a := by
 -- (i.e. no premise to select from)
 #eval show CoreM _ from do
   selectPremisesCore "a b : Nat
-    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[] 2
+    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[] #[] 2
 
 #eval show CoreM _ from do
   selectPremisesCore "a b : Nat
-    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[← Premise.fromName ``Nat.add.comm false] 2
+    ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)" #[] #[] #[← Premise.fromName ``Nat.add.comm false] 2
 
 elab "simp_all_premises" k:num : tactic => do
   let suggestions ← select (← Elab.Tactic.getMainGoal) { maxSuggestions := k.getNat }
