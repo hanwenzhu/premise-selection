@@ -20,7 +20,7 @@ register_option premiseSelection.checkMaxUnindexedPremises : Bool := {
 }
 
 register_option premiseSelection.indexByIndividualPremise : Bool := {
-  defValue := true
+  defValue := false
   descr :=
     "An option which determines whether LeanPremise relays the exact set of premises that are cached/indexed by the server (true) " ++
     "or just relays the set of files that are cached/indexed by the server (false). Setting this option to true is expected to be slower, " ++

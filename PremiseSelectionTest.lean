@@ -200,8 +200,6 @@ Trying the alternative selector.
 ---
 trace: [premiseSelection.debug] State: a b : Nat
     ⊢ Eq (HAdd.hAdd a b) (HAdd.hAdd b a)
-[premiseSelection.debug] Lean.LibrarySuggestions.Cloud.getIndexedPremisesFromServer :: cache hit
-[premiseSelection.debug] Lean.LibrarySuggestions.Cloud.getIndexedPremisesFromServer :: cache hit
 -/
 #guard_msgs in
 set_option premiseSelection.apiBaseUrl "--malformed-url" in
