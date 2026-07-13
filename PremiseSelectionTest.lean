@@ -167,21 +167,6 @@ example : 4882 = 4882 := by
 
 end Premise
 
-section MePo
-
-open MePo
-
-def mepoP := 0.6
-def mepoC := 0.9
-
-set_library_suggestions mepoSelector (useRarity := false) (p := mepoP) (c := mepoC)
-
-example (a b : Nat) : a + b = b + a := by
-  premises
-  simp_all_premises 16
-
-end MePo
-
 section Combinators
 
 /-! `orElse` -/
@@ -203,19 +188,6 @@ trace: [premiseSelection.debug] State: a b : Nat
 -/
 #guard_msgs in
 set_option premiseSelection.apiBaseUrl "--malformed-url" in
-example (a b : Nat) : a + b = b + a := by
-  premises
-  apply Nat.add_comm
-
-/-! `interleave` -/
-
-set_library_suggestions interleave #[
-  Cloud.premiseSelector,
-  mepoSelector (useRarity := false) (p := mepoP) (c := mepoC),
-  empty
-]
-
-/-- Manually check this is the interleave of cloud & MePo results -/
 example (a b : Nat) : a + b = b + a := by
   premises
   apply Nat.add_comm
