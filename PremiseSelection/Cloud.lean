@@ -163,13 +163,14 @@ where
 /-- A cache holding the premises imported from other modules that are indexed by the server. -/
 initialize indexedImportedPremisesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
 /-- A cache holding the imported modules that are indexed by the server
-    (used when `premiseSelection.indexByIndividualPremise` is `false`). -/
-initialize indexedImportedModulesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
+    (used when `premiseSelection.indexByIndividualPremise` is `false`). The associated bool
+    indicates whether the module was imported via `import all`.  -/
+initialize indexedImportedModulesRef : IO.Ref (Option (Array (Nat × Bool))) ← IO.mkRef none
 /-- A cache holding the premises imported from other modules that are not indexed by the server. -/
 initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise × Nat)) ← IO.mkRef none
 
-/-- Get imported premises, separated by whether they are indexed by the server,
-and a number indicating the true number of unindexed imported premises. -/
+/-- Get imported premises, separated by whether they are indexed by the server, and a number indicating the
+    true number of unindexed imported premises. -/
 protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × Array Premise × Nat) := do
   let getImportedPremisesCoreStart ← IO.monoMsNow
   let env ← getEnv
@@ -203,30 +204,31 @@ protected def getImportedPremisesCore (chunkSize := 256) : CoreM (Array Nat × A
   trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getImportedPremisesCoreStart}ms"
   return (indexedIdxs, unindexedPremises, numUnindexedImportedPremises)
 
-/-- Get the imported modules that are indexed by the server, the premises of imported modules that
-are not indexed by the server, and a number indicating the true number of unindexed imported premises.
+/-- Get the imported modules that are indexed by the server (each tagged with a boolean indicating whether
+    the module was imported with `import all`), the premises of imported modules that are not indexed by the server,
+    and a number indicating the true number of unindexed imported premises.
 
-This is the analogue of `Cloud.getImportedPremisesCore` used when `premiseSelection.indexByIndividualPremise`
-is `false`: rather than checking each imported premise against the server's set of indexed premises,
-each imported module is checked against the server's set of indexed modules, and all premises of an
-indexed module are assumed to be indexed by the server (so changes made to indexed modules,
-e.g. additions made to imported Mathlib files, are not captured). -/
-protected def getImportedModulesCore (chunkSize := 256) : CoreM (Array Nat × Array Premise × Nat) := do
+    This is the analogue of `Cloud.getImportedPremisesCore` used when `premiseSelection.indexByIndividualPremise`
+    is `false`: rather than checking each imported premise against the server's set of indexed premises,
+    each imported module is checked against the server's set of indexed modules, and all premises of an
+    indexed module are assumed to be indexed by the server (so changes made to indexed modules,
+    e.g. additions made to imported Mathlib files, are not captured). -/
+protected def getImportedModulesCore (chunkSize := 256) : CoreM (Array (Nat × Bool) × Array Premise × Nat) := do
   let getImportedModulesCoreStart ← IO.monoMsNow
   let env ← getEnv
   let maxUnindexedPremises ← getMaxUnindexedPremises
   let indexedModulesFromServer ← getIndexedModules
-  let moduleNames := env.header.moduleNames
+  let modules := env.header.modules
   let moduleData := env.header.moduleData
 
   let mut indexedModuleIdxs := #[]
   let mut unindexedNames := #[]
-  for i in [0:moduleData.size] do
-    let moduleName := moduleNames[i]!
+  for i in [0:modules.size] do
+    let moduleName := modules[i]!.module
     if isDeniedModule env moduleName then
       continue
     if let some idx := indexedModulesFromServer.find? moduleName then
-      indexedModuleIdxs := indexedModuleIdxs.push idx
+      indexedModuleIdxs := indexedModuleIdxs.push (idx, modules[i]!.importAll)
     else
       for name in moduleData[i]!.constNames do
         unless isDeniedPremise env name do
@@ -255,9 +257,9 @@ def getIndexedImportedPremises (chunkSize := 256) : CoreM (Array Nat) := do
     return idxs
 
 /-- Get the imported modules that are indexed by the server (used when
-`premiseSelection.indexByIndividualPremise` is `false`). The result is cached in an `IO.Ref`,
-because (assuming the server is static) the result will not change unless the file is restarted. -/
-def getIndexedImportedModules (chunkSize := 256) : CoreM (Array Nat) := do
+    `premiseSelection.indexByIndividualPremise` is `false`). The result is cached in an `IO.Ref`,
+    because (assuming the server is static) the result will not change unless the file is restarted. -/
+def getIndexedImportedModules (chunkSize := 256) : CoreM (Array (Nat × Bool)) := do
   match ← indexedImportedModulesRef.get with
   | some idxs => return idxs
   | none =>
@@ -302,10 +304,9 @@ def getNumUnindexedImportedPremises (chunkSize := 256) : CoreM Nat := do
       return numUnindexedImportedPremises
 
 /-- Get the local premises defined in the current file that are indexed by the server.
-Modifications to these premises will *not* be reflected in the retrieval results, with
-the assumption being even if modifications are made, they should be small enough
-to significantly change the semantic meaning (the name is kept after all).
--/
+    Modifications to these premises will *not* be reflected in the retrieval results, with
+    the assumption being even if modifications are made, they should be small enough
+    to significantly change the semantic meaning (the name is kept after all). -/
 def getIndexedLocalPremises : CoreM (Array Nat) := do
   let getIndexedLocalPremisesStart ← IO.monoMsNow
   let env ← getEnv
@@ -318,11 +319,10 @@ def getIndexedLocalPremises : CoreM (Array Nat) := do
   return idxs
 
 /-- Returns the local premises defined in the current file that are not indexed by the server.
-The set of premises is not cached, to allow for adding/deleting local premises (unless indexed by the server).
-Currently, the printed signature itself is cached by the `Premise.fromName` function,
-meaning that it does not support modifying local premises,
-but (**TODO**) this behavior might (or should) change in the future by disabling this cache.
--/
+    The set of premises is not cached, to allow for adding/deleting local premises (unless indexed by the server).
+    Currently, the printed signature itself is cached by the `Premise.fromName` function,
+    meaning that it does not support modifying local premises, but (**TODO**) this behavior might (or should) change
+    in the future by disabling this cache. -/
 def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let getUnindexedLocalPremisesStart ← IO.monoMsNow
   let env ← getEnv
@@ -400,15 +400,23 @@ scoped instance : ToMessageData Suggestion where
 
 initialize Lean.registerTraceClass `premiseSelection.debug
 
-def selectPremisesCore (state : String)
-    (indexedPremises : Array Nat) (importedModules : Array Nat) (unindexedPremises : Array Premise)
-    (k : Nat) : CoreM (Array Suggestion) := do
+def selectPremisesCore (state : String) (indexedPremises : Array Nat) (importedModules : Array (Nat × Bool))
+  (unindexedPremises : Array Premise) (k : Nat) : CoreM (Array Suggestion) := do
+  let env ← getEnv
+  let inModuleSystem := env.header.isModule
+  -- If `inModuleSystem` is false, then the server doesn't need or use the `imported_all_modules` field, so we can
+  -- just leave it blank.
+  let importAllModules :=
+    if inModuleSystem then (importedModules.filter (·.2)).map (·.1)
+    else #[]
   let data := Json.mkObj [
     ("state", .str state),
     ("local_premises", toJson indexedPremises),  -- the name `local_premises` is an artifact from previous versions
-    ("imported_modules", toJson importedModules),
+    ("imported_modules", toJson (importedModules.map (·.1))),
     ("new_premises", toJson unindexedPremises),
     ("k", .num (.fromNat k)),
+    ("caller_in_module_system", .bool inModuleSystem),
+    ("imported_all_modules", toJson importAllModules)
   ]
   makeRequest "POST" "/retrieve" (some data)
 
