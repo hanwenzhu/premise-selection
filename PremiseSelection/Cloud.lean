@@ -1,25 +1,27 @@
-import Lean.LibrarySuggestions
-import Lean.Server.Utils
-import PremiseSelection.Premise
+module
+
+public import Lean.LibrarySuggestions
+public import Lean.Server.Utils
+public import PremiseSelection.Premise
 
 namespace Lean.LibrarySuggestions.Cloud
 
-register_option premiseSelection.apiBaseUrl : String := {
+public register_option premiseSelection.apiBaseUrl : String := {
   defValue := "http://leanpremise.net"
   descr := "The base URL of the premise retrieval API"
 }
 
-register_option premiseSelection.maxUnindexedPremises : Nat := {
+public register_option premiseSelection.maxUnindexedPremises : Nat := {
   defValue := 2048
   descr := "The maximum number of unindexed premises to send to the premise selection server. The server may also impose its own restriction on this number, so we take the minimum of this number and the server's limit."
 }
 
-register_option premiseSelection.checkMaxUnindexedPremises : Bool := {
+public register_option premiseSelection.checkMaxUnindexedPremises : Bool := {
   defValue := false
   descr := "An option which determines whether the server's limit on max unindexed premises is checked, or whether premiseSelection.maxUnindexedPremises is just used."
 }
 
-register_option premiseSelection.indexByIndividualPremise : Bool := {
+public register_option premiseSelection.indexByIndividualPremise : Bool := {
   defValue := false
   descr :=
     "An option which determines whether LeanPremise relays the exact set of premises that are cached/indexed by the server (true) " ++
@@ -30,7 +32,7 @@ register_option premiseSelection.indexByIndividualPremise : Bool := {
 def getApiBaseUrl (opts : Options) : String :=
   premiseSelection.apiBaseUrl.get opts
 
-initialize
+public initialize
   Lean.registerTraceClass `premiseSelection.cloud.debug
   Lean.registerTraceClass `premiseSelection.cloud.debug.full
   Lean.registerTraceClass `premiseSelection.cloud.profiling
@@ -112,7 +114,7 @@ def getMaxUnindexedPremises : CoreM Nat := do
       return userMaxNewPremises
 
 /-- A cache holding indexed premises by the server. -/
-initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
+public initialize indexedPremisesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
 /-- Unfiltered list of all premises known by the server, as a mapping from name to index.
     The result is cached in an `IO.Ref`, because (assuming the server is static) the result will not change. -/
 def getIndexedPremisesFromServer : CoreM (NameMap Nat) := do
@@ -136,7 +138,7 @@ where
     return names.zipIdx.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
 
 /-- A cache holding indexed modules by the server. -/
-initialize indexedModulesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
+public initialize indexedModulesFromServerRef : IO.Ref (Option (NameMap Nat)) ← IO.mkRef none
 
 /-- A list of all files known by the server, as a mapping from name to index.
     The result is cached in an `IO.Ref`, because (assuming the server is static) the result will not change. -/
@@ -161,13 +163,13 @@ where
     return names.zipIdx.foldl (fun ns (n, i) => ns.insert n.toName i) ∅
 
 /-- A cache holding the premises imported from other modules that are indexed by the server. -/
-initialize indexedImportedPremisesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
+public initialize indexedImportedPremisesRef : IO.Ref (Option (Array Nat)) ← IO.mkRef none
 /-- A cache holding the imported modules that are indexed by the server
     (used when `premiseSelection.indexByIndividualPremise` is `false`). The associated bool
     indicates whether the module was imported via `import all`.  -/
-initialize indexedImportedModulesRef : IO.Ref (Option (Array (Nat × Bool))) ← IO.mkRef none
+public initialize indexedImportedModulesRef : IO.Ref (Option (Array (Nat × Bool))) ← IO.mkRef none
 /-- A cache holding the premises imported from other modules that are not indexed by the server. -/
-initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise × Nat)) ← IO.mkRef none
+public initialize unindexedImportedPremisesRef : IO.Ref (Option (Array Premise × Nat)) ← IO.mkRef none
 
 /-- Get imported premises, separated by whether they are indexed by the server, and a number indicating the
     true number of unindexed imported premises. -/
@@ -259,7 +261,7 @@ def getIndexedImportedPremises (chunkSize := 256) : CoreM (Array Nat) := do
 /-- Get the imported modules that are indexed by the server (used when
     `premiseSelection.indexByIndividualPremise` is `false`). The result is cached in an `IO.Ref`,
     because (assuming the server is static) the result will not change unless the file is restarted. -/
-def getIndexedImportedModules (chunkSize := 256) : CoreM (Array (Nat × Bool)) := do
+public def getIndexedImportedModules (chunkSize := 256) : CoreM (Array (Nat × Bool)) := do
   match ← indexedImportedModulesRef.get with
   | some idxs => return idxs
   | none =>
@@ -270,7 +272,7 @@ def getIndexedImportedModules (chunkSize := 256) : CoreM (Array (Nat × Bool)) :
 
 /-- Get the imported premises not indexed by the server. The result is cached in an `IO.Ref`,
 because (assuming the server is static) the result will not change unless the file is restarted. -/
-def getUnindexedImportedPremises (chunkSize := 256) : CoreM (Array Premise) := do
+public def getUnindexedImportedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   match ← unindexedImportedPremisesRef.get with
   | some (premises, _) => return premises
   | none =>
@@ -323,7 +325,7 @@ def getIndexedLocalPremises : CoreM (Array Nat) := do
     Currently, the printed signature itself is cached by the `Premise.fromName` function,
     meaning that it does not support modifying local premises, but (**TODO**) this behavior might (or should) change
     in the future by disabling this cache. -/
-def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
+public def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let getUnindexedLocalPremisesStart ← IO.monoMsNow
   let env ← getEnv
   -- When `premiseSelection.indexByIndividualPremise` is `false`, the set of premises indexed by
@@ -344,7 +346,7 @@ def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) := do
 
 /-- Returns new unindexed premises defined in the environment, from both imported and local premises,
 truncated to the maximum number of unindexed premises allowed by the server. -/
-def getUnindexedPremises (chunkSize := 256) : CoreM (Array Premise) := do
+public def getUnindexedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   let maxUnindexedPremises ← getMaxUnindexedPremises
   let premises₁ ← getUnindexedImportedPremises chunkSize
   let premises₂ ← getUnindexedLocalPremises chunkSize
@@ -363,26 +365,10 @@ def getUnindexedPremises (chunkSize := 256) : CoreM (Array Premise) := do
   return premises
 
 /-- Returns indexed premises defined in the environment, from both imported and local premises. -/
-def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do
+public def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do
   let idxs₁ ← getIndexedImportedPremises chunkSize
   let idxs₂ ← getIndexedLocalPremises
   return idxs₁ ++ idxs₂
-
-elab "set_premise_selection_cloud_cache" : command => do
-  Elab.Command.liftCoreM do
-    let _ ← getUnindexedPremises
-    if premiseSelection.indexByIndividualPremise.get (← getOptions) then
-      let _ ← getIndexedPremises
-    else
-      let _ ← getIndexedImportedModules
-
-elab "clear_premise_selection_cloud_cache" : command => do
-  Premise.fromNameCacheRef.set ∅
-  indexedPremisesFromServerRef.set none
-  indexedModulesFromServerRef.set none
-  indexedImportedPremisesRef.set none
-  indexedImportedModulesRef.set none
-  unindexedImportedPremisesRef.set none
 
 end IndexedPremises
 
@@ -400,7 +386,7 @@ scoped instance : ToMessageData Suggestion where
 
 initialize Lean.registerTraceClass `premiseSelection.debug
 
-def selectPremisesCore (state : String) (indexedPremises : Array Nat) (importedModules : Array (Nat × Bool))
+public def selectPremisesCore (state : String) (indexedPremises : Array Nat) (importedModules : Array (Nat × Bool))
   (unindexedPremises : Array Premise) (k : Nat) : CoreM (Array Suggestion) := do
   let env ← getEnv
   let inModuleSystem := env.header.isModule
@@ -420,7 +406,7 @@ def selectPremisesCore (state : String) (indexedPremises : Array Nat) (importedM
   ]
   makeRequest "POST" "/retrieve" (some data)
 
-def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
+public def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   let start ← IO.monoMsNow
   let state ← withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) $ Meta.ppGoal goal
   let state := state.pretty
@@ -449,7 +435,7 @@ def selectPremises (goal : MVarId) (k : Nat) : MetaM (Array Suggestion) := do
   trace[premiseSelection.debug] "Suggestions: {suggestions}"
   return suggestions
 
-def premiseSelector : Selector := fun goal config => do
+public def premiseSelector : Selector := fun goal config => do
   let premises ← selectPremises goal config.maxSuggestions
   premises.filterM fun suggestion => config.filter suggestion.name
 

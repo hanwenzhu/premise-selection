@@ -1,7 +1,11 @@
+module
+
 /-
 Getting new user-defined premises in an environment
 -/
-import Lean.LibrarySuggestions.Basic
+public import Lean.LibrarySuggestions.Basic
+meta import Lean.Elab.Command -- Needed for the `run_cmd` call to update the deny lists
+meta import Lean.LibrarySuggestions.Basic -- Needed for the `run_cmd` call to update the deny lists
 
 open Lean Core
 
@@ -16,7 +20,7 @@ The entire architecture is very WIP: it depends on several unreal assumptions
 -/
 
 /-- The data of a new premise sent to the server, including name and a signature consisting of docstring and type. -/
-structure Premise where
+public structure Premise where
   name : Name
   decl : String
 deriving Inhabited, Repr, ToJson
@@ -30,7 +34,7 @@ open Meta PrettyPrinter Delaborator
 /--
 Returns kind (string) given constant (from declarations.lean)
 -/
-def getKind (cinfo : ConstantInfo) : MetaM String := do
+public def getKind (cinfo : ConstantInfo) : MetaM String := do
   let env ← getEnv
   let kind : String :=
     match cinfo with
@@ -55,9 +59,9 @@ def getKind (cinfo : ConstantInfo) : MetaM String := do
   return kind
 
 /-- A reference holding a mapping from a user-defined premise `name` to `Premise.fromName name` (see `Premise.fromName`). -/
-initialize fromNameCacheRef : IO.Ref (NameMap Premise) ← IO.mkRef ∅
+public initialize fromNameCacheRef : IO.Ref (NameMap Premise) ← IO.mkRef ∅
 
-def fromNameCore (name : Name) : CoreM Premise := do
+public def fromNameCore (name : Name) : CoreM Premise := do
   -- Calculate signature from declaration name
   MetaM.run' do
     withOptions (fun o => (o.set `pp.notation false).set `pp.fullNames true) do
@@ -97,7 +101,7 @@ called on the same declaration, it reads the previously stored result instead of
 (**TODO**) This is just a temporary solution so that it is reasonable to call e.g. `aesop (add unsafe (by hammer))`
 where `hammer` is called many times.
 -/
-def fromName (name : Name) (useCache : Bool) : CoreM Premise := do
+public def fromName (name : Name) (useCache : Bool) : CoreM Premise := do
   if !useCache then
     let premise ← fromNameCore name
     return premise
@@ -131,7 +135,7 @@ private def List.toChunks {α} : Nat → List α → List (List α)
     go xs #[x] #[]
 
 /-- This is equivalent to `names.mapM Premise.fromName`, but it processes chunks in parallel. -/
-def fromNames (names : Array Name) (chunkSize : Nat) (useCache : Bool) : CoreM (Array Premise) := do
+public def fromNames (names : Array Name) (chunkSize : Nat) (useCache : Bool) : CoreM (Array Premise) := do
   if chunkSize == 1 then
     let premises ← names.mapM (Premise.fromName (useCache := useCache))
     return premises
@@ -154,12 +158,11 @@ def fromNames (names : Array Name) (chunkSize : Nat) (useCache : Bool) : CoreM (
 
 end PrettyPrinting
 
-/-! **TODO**: use the implementation of deny-list in https://github.com/leanprover/lean4/tree/mepo instead (once the branch is merged) -/
-
 run_cmd
   for module in #[
-    "Aesop", "Auto", "Cli", "CodeAction", "DocGen4", "Duper", "ImportGraph", "Lake", "Lean", "LeanSearchClient", "Linter", "Mathport",
-    "MD4Lean", "Plausible", "ProofWidgets", "Qq", "QuerySMT", "Tactic", "TacticExtra", "Test", "Testing", "UnicodeBasic", "Util"
+    "Aesop", "Auto", "Cli", "CodeAction", "cvc5", "DocGen4", "Duper", "Hammer", "ImportGraph", "Lake", "Lean",
+    "LeanSearchClient", "Linter", "Mathport", "MD4Lean", "Plausible", "ProofWidgets", "Qq", "QuerySMT", "Smt",
+    "Tactic", "TacticExtra", "Test", "Testing", "UnicodeBasic", "Util"
   ] do
     modifyEnv fun env => moduleDenyListExt.addEntry env module
 

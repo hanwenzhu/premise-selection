@@ -1,13 +1,15 @@
+module
+
 /-
 Combinators that combine two premise selectors
 -/
 
-import Lean.LibrarySuggestions
+public import Lean.LibrarySuggestions
 
 namespace Lean.LibrarySuggestions
 
 /-- Try the first premise selector. If it throws an error, try the second one. -/
-def orElse (s₁ : Selector) (s₂ : Unit → Selector) : Selector := fun g config => do
+public def orElse (s₁ : Selector) (s₂ : Unit → Selector) : Selector := fun g config => do
   try
     s₁ g config
   catch e =>
@@ -16,7 +18,7 @@ def orElse (s₁ : Selector) (s₂ : Unit → Selector) : Selector := fun g conf
 Trying the alternative selector."
     s₂ () g config
 
-instance : OrElse Selector := ⟨orElse⟩
+public instance : OrElse Selector := ⟨orElse⟩
 
 /--
 A single combinator that lets each of the `n` selectors select `k` premises,
@@ -25,7 +27,7 @@ merge the `n * k` results by rank, and returns the deduplicated top `k` among th
 This combinator is inspired by MeSh, but it is a simplified version of MeSh.
 (MeSh can control the weight and steepness of probability density for each selector.)
 -/
-def interleave (selectors : Array Selector) : Selector := fun g config => do
+public def interleave (selectors : Array Selector) : Selector := fun g config => do
   let allSelectorSuggestions ← selectors.mapM fun s => s g config
   let mut suggestions := #[]
   let mut visited : NameSet := {}
