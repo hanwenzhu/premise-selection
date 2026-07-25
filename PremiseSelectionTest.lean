@@ -1,4 +1,6 @@
-import PremiseSelection
+module
+
+public import PremiseSelection
 import Lean
 
 open Lean LibrarySuggestions
@@ -107,7 +109,7 @@ info: { name := `Nat.add,
 #guard_msgs in #eval Premise.fromName ``Nat.add false
 
 /--
-info: { name := `Nat.add_comm, decl := "theorem Nat.add_comm (n m : Nat) : Eq (HAdd.hAdd n m) (HAdd.hAdd m n)" }
+info: { name := `Nat.add_comm, decl := "axiom Nat.add_comm (n m : Nat) : Eq (HAdd.hAdd n m) (HAdd.hAdd m n)" }
 -/
 #guard_msgs in #eval Premise.fromName ``Nat.add_comm false
 

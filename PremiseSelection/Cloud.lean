@@ -338,7 +338,7 @@ public def getUnindexedLocalPremises (chunkSize := 256) : CoreM (Array Premise) 
   let mut names := #[]
   for (name, _) in env.constants.map₂ do
     unless indexedPremisesFromServer.contains name do
-      unless isDeniedPremise env name do
+      unless isDeniedPremise env name true do
         names := names.push name
   let res ← Premise.fromNames names chunkSize true -- **TODO** see docstring
   trace[premiseSelection.cloud.profiling] "{decl_name%} run time: {(← IO.monoMsNow) - getUnindexedLocalPremisesStart}ms"
@@ -372,16 +372,16 @@ public def getIndexedPremises (chunkSize := 256) : CoreM (Array Nat) := do
 
 end IndexedPremises
 
-scoped instance : FromJson Suggestion where
+public scoped instance : FromJson Suggestion where
   fromJson? json := do
     let name ← json.getObjValAs? Name "name"
     let score ← json.getObjValAs? Float "score"
     return { name, score }
 
-scoped instance : ToString Suggestion where
+public scoped instance : ToString Suggestion where
   toString p := s!"{p.name} ({p.score})"
 
-scoped instance : ToMessageData Suggestion where
+public scoped instance : ToMessageData Suggestion where
   toMessageData p := s!"{p.name} ({p.score})"
 
 initialize Lean.registerTraceClass `premiseSelection.debug
