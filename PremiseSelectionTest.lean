@@ -103,10 +103,9 @@ section Premise
   return json.compress.length
 
 /--
-info: { name := `Nat.add,
-  decl := "/-- Addition of natural numbers, typically used via the `+` operator.\n\nThis function is overridden in both the kernel and the compiler to efficiently evaluate using the\narbitrary-precision arithmetic library. The definition provided here is the logical model.\n -/\ndef Nat.add : Nat → Nat → Nat" }
+info: { name := `Nat.imax, decl := "axiom Nat.imax (n m : Nat) : Nat" }
 -/
-#guard_msgs in #eval Premise.fromName ``Nat.add false
+#guard_msgs in #eval Premise.fromName ``Nat.imax false
 
 /--
 info: { name := `Nat.add_comm, decl := "axiom Nat.add_comm (n m : Nat) : Eq (HAdd.hAdd n m) (HAdd.hAdd m n)" }
