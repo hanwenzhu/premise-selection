@@ -79,11 +79,11 @@ example (a b : Nat) : a + b = b + a := by
 
 #time
 example (a b : Nat) : a + (b + 1) = (a + b) + 1 := by
-  simp_all_premises 3
+  simp_all_premises 5
 
 #time
 example (a b : Nat) : a + (b + 1) = (a + b) + 1 := by
-  simp_all_premises 3
+  simp_all_premises 5
 
 end Profiling
 
