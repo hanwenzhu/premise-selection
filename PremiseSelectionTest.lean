@@ -103,7 +103,7 @@ section Premise
   return json.compress.length
 
 /--
-info: { name := `Nat.imax, decl := "axiom Nat.imax (n m : Nat) : Nat" }
+info: { name := `Lean.Nat.imax, decl := "axiom Lean.Nat.imax (n m : Nat) : Nat" }
 -/
 #guard_msgs in #eval Premise.fromName ``Nat.imax false
 

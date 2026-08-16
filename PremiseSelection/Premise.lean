@@ -3,6 +3,7 @@ module
 /-
 Getting new user-defined premises in an environment
 -/
+public import Lean.DocString.Markdown
 public import Lean.LibrarySuggestions.Basic
 meta import Lean.Elab.Command -- Needed for the `run_cmd` call to update the deny lists
 meta import Lean.LibrarySuggestions.Basic -- Needed for the `run_cmd` call to update the deny lists
@@ -68,7 +69,7 @@ public def fromNameCore (name : Name) : CoreM Premise := do
       let env ← getEnv
       -- IO.eprintln name
       let cinfo ← profileitM Exception "cinfo" (← getOptions) do getConstInfo name
-      let doc? ← profileitM Exception "doc?" (← getOptions) do findSimpleDocString? env name  -- **TODO** any difference with findDocString?
+      let doc? ← profileitM Exception "doc?" (← getOptions) do findSimpleDocString? env name
       let kind ← profileitM Exception "kind?" (← getOptions) do getKind cinfo
       /-
       Regarding `ppSignature`:
