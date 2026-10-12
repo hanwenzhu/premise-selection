@@ -32,7 +32,7 @@ public register_option premiseSelection.indexByIndividualPremise : Bool := {
 def getApiBaseUrl (opts : Options) : String :=
   premiseSelection.apiBaseUrl.get opts
 
-public initialize
+initialize
   Lean.registerTraceClass `premiseSelection.cloud.debug
   Lean.registerTraceClass `premiseSelection.cloud.debug.full
   Lean.registerTraceClass `premiseSelection.cloud.profiling
